@@ -20,20 +20,25 @@ public struct LanguageModule: Identifiable, Sendable {
     public var themes: [ConversationTheme] {
         ConversationTheme.shared.map { themeOverrides[$0.id] ?? $0 }
     }
-    public var defaultTitle: String { "A little \(name)" }
-    public var talkTitle: String { "A little everyday \(name)" }
-    public var settingsTitle: String { "\(name) · \(variety)" }
+    public var displayName: String { id == "qu" ? "Quechua Colla" : name }
+    public var defaultTitle: String { "A little \(displayName)" }
+    public var talkTitle: String { "A little everyday \(displayName)" }
+    public var settingsTitle: String { "\(displayName) · \(variety)" }
 }
 
 public enum LanguageRegistry {
     public static let defaultID = "nb"
     public static let all: [LanguageModule] = [.norwegian, .spanish, .english, .french, .german, .italian, .portuguese, .mandarin]
-    public static func module(for id: String) -> LanguageModule? { all.first { $0.id == id } }
+    public static let originarias: [LanguageModule] = [.quechua]
+    public static let additionalLanguages: [LanguageModule] = [.korean, .japanese, .hindi]
+    public static let supported: [LanguageModule] = all + originarias + additionalLanguages
+    public static func module(for id: String) -> LanguageModule? { supported.first { $0.id == id } }
 }
 
 public enum MeaningLanguages {
-    public static let all = ["English", "French", "German", "Spanish", "Norwegian", "Portuguese", "Italian", "Chinese (Simplified)", "Polish", "Arabic", "Ukrainian"]
+    public static let all = ["English", "French", "German", "Spanish", "Norwegian", "Portuguese", "Italian", "Chinese (Simplified)", "Polish", "Arabic", "Ukrainian", "Korean", "Japanese", "Hindi", "Quechua Colla"]
     public static func greeting(in language: String) -> String {
-        ["English": "Hi!", "French": "Salut !", "German": "Hallo!", "Spanish": "¡Hola!", "Norwegian": "Hei!", "Portuguese": "Olá!", "Italian": "Ciao!", "Chinese (Simplified)": "你好！", "Chinese": "你好！", "Polish": "Cześć!", "Arabic": "مرحبًا!", "Ukrainian": "Привіт!"][language] ?? "Hi!"
+        ["English": "Hi!", "French": "Salut !", "German": "Hallo!", "Spanish": "¡Hola!", "Norwegian": "Hei!", "Portuguese": "Olá!", "Italian": "Ciao!", "Chinese (Simplified)": "你好！", "Chinese": "你好！", "Polish": "Cześć!", "Arabic": "مرحبًا!", "Ukrainian": "Привіт!", "Korean": "안녕하세요!", "Japanese": "こんにちは！", "Hindi": "नमस्ते!", "Quechua Colla": "¡Allillanchu!", "Quechua": "¡Allillanchu!"][language] ?? "Hi!"
     }
 }
+

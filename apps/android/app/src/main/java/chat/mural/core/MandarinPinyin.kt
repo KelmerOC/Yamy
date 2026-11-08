@@ -86,6 +86,21 @@ object CaptionWords {
             val words = MandarinPinyin.words(text, reader) ?: return listOf(CaptionSegment(text, null))
             return words.map { CaptionSegment(it, it.takeIf(::containsLetter)) }
         }
+        if (languageID == "ja") {
+            if (text.isEmpty()) return emptyList()
+            val iterator = java.text.BreakIterator.getWordInstance(java.util.Locale.JAPANESE)
+            iterator.setText(text)
+            val segments = mutableListOf<CaptionSegment>()
+            var start = iterator.first()
+            var end = iterator.next()
+            while (end != java.text.BreakIterator.DONE) {
+                val token = text.substring(start, end)
+                segments += segment(token)
+                start = end
+                end = iterator.next()
+            }
+            return segments
+        }
         val result = mutableListOf<CaptionSegment>()
         val run = StringBuilder()
         for (character in text) {

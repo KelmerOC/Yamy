@@ -18,7 +18,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 enum class MuralSymbol { Wave, Themes, Words, Settings, Mic, MicOff, Captions, Transcript, End,
-    Keyboard, Sparkles, ArrowUp, ChevronDown, Back, Search, Close, Check, Leaf, ChevronRight, Coffee, Globe, Sun, Food, Music }
+    Keyboard, Sparkles, ArrowUp, ChevronDown, Back, Search, Close, Check, Leaf, ChevronRight, Coffee, Globe, Sun, Moon, Food, Music, Heart, Translate,
+    AcademicCap, ChatBubbles, Trash, TestCheck, Filter, Refresh, Repeat, ChartPie, MoreVertical, Clock, Flame }
 
 /** Original, consistently weighted artwork; no platform-dependent text glyphs. */
 @Composable
@@ -84,10 +85,208 @@ fun MuralIcon(symbol: MuralSymbol, modifier: Modifier = Modifier, color: Color =
                     path { moveTo(12f,3f); cubicTo(4f,10f,4f,14f,12f,21f); cubicTo(20f,14f,20f,10f,12f,3f) } }
                 MuralSymbol.Sun -> { path { moveTo(6f,18f); cubicTo(1f,7f,23f,7f,18f,18f) }; line(2f,19f,22f,19f)
                     line(12f,2f,12f,5f); line(3f,6f,5f,8f); line(19f,8f,21f,6f); line(1f,13f,3f,13f); line(21f,13f,23f,13f) }
+                MuralSymbol.Moon -> {
+                    val crescent = Path().apply {
+                        moveTo(19.5f, 13.5f)
+                        cubicTo(18.5f, 17.5f, 14.8f, 20.5f, 10.5f, 20.5f)
+                        cubicTo(5.8f, 20.5f, 2f, 16.7f, 2f, 12f)
+                        cubicTo(2f, 7.7f, 5.2f, 4.2f, 9.3f, 3.6f)
+                        cubicTo(8.5f, 5.2f, 8f, 7f, 8f, 9f)
+                        cubicTo(8f, 14.5f, 12.5f, 19f, 18f, 19f)
+                        cubicTo(18.6f, 19f, 19.1f, 18.9f, 19.5f, 18.8f)
+                        close()
+                    }
+                    if (filled) drawPath(crescent, color) else drawPath(crescent, color, style = stroke)
+                }
                 MuralSymbol.Food -> { line(6f,3f,6f,21f); line(3f,3f,3f,8f); line(9f,3f,9f,8f)
                     path { moveTo(3f,8f); quadraticTo(6f,13f,9f,8f) }; path { moveTo(19f,21f); lineTo(19f,3f); cubicTo(12f,8f,14f,14f,19f,14f) } }
                 MuralSymbol.Music -> { path { moveTo(9f,18f); lineTo(9f,5f); lineTo(21f,2f); lineTo(21f,15f) }
                     drawOval(color,Offset(3f,16f),Size(6f,5f)); drawOval(color,Offset(15f,13f),Size(6f,5f)); line(9f,9f,21f,6f) }
+                MuralSymbol.Heart -> {
+                    val heart = Path().apply {
+                        moveTo(12f, 21.35f)
+                        cubicTo(11.45f, 21.35f, 10.95f, 21.15f, 10.55f, 20.78f)
+                        cubicTo(5.4f, 16.1f, 2f, 13.02f, 2f, 9.2f)
+                        cubicTo(2f, 6.08f, 4.42f, 3.65f, 7.5f, 3.65f)
+                        cubicTo(9.24f, 3.65f, 10.91f, 4.46f, 12f, 5.72f)
+                        cubicTo(13.09f, 4.46f, 14.76f, 3.65f, 16.5f, 3.65f)
+                        cubicTo(19.58f, 3.65f, 22f, 6.08f, 22f, 9.2f)
+                        cubicTo(22f, 13.02f, 18.6f, 16.1f, 13.45f, 20.78f)
+                        cubicTo(13.05f, 21.15f, 12.55f, 21.35f, 12f, 21.35f)
+                        close()
+                    }
+                    if (filled) drawPath(heart, color)
+                    else drawPath(heart, color, style = stroke)
+                }
+                MuralSymbol.Translate -> {
+                    // Stylized Latin 'A' on upper-left
+                    path { moveTo(4.5f, 15f); lineTo(8f, 6f); lineTo(11.5f, 15f) }
+                    line(6.2f, 11.5f, 9.8f, 11.5f)
+
+                    // Stylized Asian '文' on lower-right
+                    line(13.5f, 11f, 21.5f, 11f)
+                    line(17.5f, 7.5f, 17.5f, 11f)
+                    path { moveTo(17.5f, 11f); quadraticTo(15.5f, 15f, 13f, 18.5f) }
+                    path { moveTo(16.5f, 13.5f); quadraticTo(18.5f, 16.5f, 21.5f, 18.5f) }
+
+                    // Subtle rounded translation frame accents
+                    path { moveTo(12f, 3.5f); lineTo(18.5f, 3.5f); quadraticTo(21.5f, 3.5f, 21.5f, 6.5f) }
+                    path { moveTo(2.5f, 17.5f); quadraticTo(2.5f, 20.5f, 5.5f, 20.5f); lineTo(12f, 20.5f) }
+                }
+                MuralSymbol.AcademicCap -> {
+                    // Mortarboard top rhombus
+                    path {
+                        moveTo(12f, 4f)
+                        lineTo(22f, 8.8f)
+                        lineTo(12f, 13.6f)
+                        lineTo(2f, 8.8f)
+                        close()
+                    }
+                    // Cap skull curve underneath
+                    path {
+                        moveTo(6f, 11f)
+                        lineTo(6f, 15.5f)
+                        cubicTo(6f, 18.5f, 18f, 18.5f, 18f, 15.5f)
+                        lineTo(18f, 11f)
+                    }
+                    // Tassel cord hanging down the right
+                    line(20.5f, 9.5f, 20.5f, 16.5f)
+                    drawCircle(color, 1.15f, Offset(20.5f, 17.5f))
+                }
+                MuralSymbol.ChatBubbles -> {
+                    // Primary / left chat bubble
+                    path {
+                        moveTo(4f, 3.5f)
+                        lineTo(14f, 3.5f)
+                        quadraticTo(16.5f, 3.5f, 16.5f, 6f)
+                        lineTo(16.5f, 10.5f)
+                        quadraticTo(16.5f, 13f, 14f, 13f)
+                        lineTo(8f, 13f)
+                        lineTo(4.5f, 15.5f)
+                        lineTo(4.5f, 13f)
+                        lineTo(4f, 13f)
+                        quadraticTo(1.5f, 13f, 1.5f, 10.5f)
+                        lineTo(1.5f, 6f)
+                        quadraticTo(1.5f, 3.5f, 4f, 3.5f)
+                        close()
+                    }
+                    // Secondary / right overlapping chat bubble
+                    path {
+                        moveTo(10.5f, 8.5f)
+                        lineTo(20f, 8.5f)
+                        quadraticTo(22.5f, 8.5f, 22.5f, 11f)
+                        lineTo(22.5f, 16f)
+                        quadraticTo(22.5f, 18.5f, 20f, 18.5f)
+                        lineTo(19.5f, 18.5f)
+                        lineTo(19.5f, 21f)
+                        lineTo(16f, 18.5f)
+                        lineTo(10.5f, 18.5f)
+                        quadraticTo(8f, 18.5f, 8f, 16f)
+                        lineTo(8f, 11f)
+                        quadraticTo(8f, 8.5f, 10.5f, 8.5f)
+                        close()
+                    }
+                }
+                MuralSymbol.Trash -> {
+                    // Handle and top lid bar
+                    line(9.5f, 3.5f, 14.5f, 3.5f)
+                    line(4f, 6.5f, 20f, 6.5f)
+                    // Can body
+                    path {
+                        moveTo(5.8f, 6.5f)
+                        lineTo(7.2f, 19.5f)
+                        quadraticTo(7.4f, 21.2f, 9.2f, 21.2f)
+                        lineTo(14.8f, 21.2f)
+                        quadraticTo(16.6f, 21.2f, 16.8f, 19.5f)
+                        lineTo(18.2f, 6.5f)
+                    }
+                    // Vertical rib lines
+                    line(9.8f, 10f, 9.8f, 17.5f)
+                    line(14.2f, 10f, 14.2f, 17.5f)
+                }
+                MuralSymbol.TestCheck -> {
+                    // Clipboard board
+                    drawRoundRect(color, Offset(4.5f, 5f), Size(15f, 16.5f), CornerRadius(2.2f), style = stroke)
+                    // Clip top
+                    path {
+                        moveTo(9f, 5f)
+                        lineTo(9f, 3.2f)
+                        quadraticTo(9f, 2.2f, 10f, 2.2f)
+                        lineTo(14f, 2.2f)
+                        quadraticTo(15f, 2.2f, 15f, 3.2f)
+                        lineTo(15f, 5f)
+                    }
+                    // Checkmark inside board
+                    path {
+                        moveTo(7.5f, 11f)
+                        lineTo(9.6f, 13.2f)
+                        lineTo(13.5f, 8.8f)
+                    }
+                    // Task lines
+                    line(8f, 16f, 16f, 16f)
+                    line(8f, 18.5f, 13.5f, 18.5f)
+                }
+                MuralSymbol.Filter -> {
+                    line(3f, 6f, 21f, 6f)
+                    drawCircle(color, 2f, Offset(8f, 6f), style = stroke)
+                    line(3f, 12f, 21f, 12f)
+                    drawCircle(color, 2f, Offset(16f, 12f), style = stroke)
+                    line(3f, 18f, 21f, 18f)
+                    drawCircle(color, 2f, Offset(10f, 18f), style = stroke)
+                }
+                MuralSymbol.Refresh -> {
+                    path {
+                        arcTo(androidx.compose.ui.geometry.Rect(4f, 4f, 20f, 20f), -45f, 270f, false)
+                    }
+                    path {
+                        moveTo(19f, 4f)
+                        lineTo(20f, 9.5f)
+                        lineTo(14.5f, 9.5f)
+                    }
+                }
+                MuralSymbol.Repeat -> {
+                    path {
+                        moveTo(17f, 2f); lineTo(21f, 6f); lineTo(17f, 10f)
+                    }
+                    path {
+                        moveTo(3f, 11f); lineTo(3f, 8f); quadraticTo(3f, 6f, 5f, 6f); lineTo(20f, 6f)
+                    }
+                    path {
+                        moveTo(7f, 22f); lineTo(3f, 18f); lineTo(7f, 14f)
+                    }
+                    path {
+                        moveTo(21f, 13f); lineTo(21f, 16f); quadraticTo(21f, 18f, 19f, 18f); lineTo(4f, 18f)
+                    }
+                }
+                MuralSymbol.ChartPie -> {
+                    drawCircle(color, 9f, Offset(12f, 12f), style = stroke)
+                    line(12f, 12f, 12f, 3f)
+                    line(12f, 12f, 19f, 17f)
+                    line(12f, 12f, 5f, 12f)
+                }
+                MuralSymbol.MoreVertical -> {
+                    drawCircle(color, 1.5f, Offset(12f, 5f))
+                    drawCircle(color, 1.5f, Offset(12f, 12f))
+                    drawCircle(color, 1.5f, Offset(12f, 19f))
+                }
+                MuralSymbol.Clock -> {
+                    drawCircle(color, 9f, Offset(12f, 12f), style = stroke)
+                    line(12f, 7f, 12f, 12f)
+                    line(12f, 12f, 16f, 12f)
+                }
+                MuralSymbol.Flame -> {
+                    val flame = Path().apply {
+                        moveTo(12f, 2.5f)
+                        cubicTo(10f, 7f, 6f, 10f, 6f, 14.5f)
+                        cubicTo(6f, 18.5f, 8.7f, 21.5f, 12f, 21.5f)
+                        cubicTo(15.3f, 21.5f, 18f, 18.5f, 18f, 14.5f)
+                        cubicTo(18f, 11f, 15f, 8f, 15f, 8f)
+                        cubicTo(15f, 8f, 14f, 11f, 12f, 11f)
+                        cubicTo(10.5f, 11f, 10f, 9.5f, 12f, 2.5f)
+                        close()
+                    }
+                    if (filled) drawPath(flame, color) else drawPath(flame, color, style = stroke)
+                }
             }
         }
     }

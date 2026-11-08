@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">快適な設定に</string>
+    <string name="settings_done">完了</string>
+    <string name="settings_just_your_pace">マイペースで</string>
+    <string name="settings_meaning_subtitles">意味の字幕</string>
+    <string name="settings_language_footer">各言語ごとに単語や進捗が個別に保存されます。Yamyは会話を通じてあなたのペースを把握します。</string>
+    <string name="settings_language_running_footer">言語を変更するには、現在の会話を終了してください。各言語ごとに単語や進捗が個別に保存されます。</string>
+    <string name="settings_advanced">詳細設定</string>
+    <string name="settings_use_own_key">独自のAPIキーを使用</string>
+    <string name="settings_byok_version_footer">独自のGoogle Gemini APIキーを使用してYamyを利用するオプションです。</string>
+    <string name="settings_key_owner_footer">使用量はご自身のGoogle AI Studioアカウントを通じて管理されます。キーはこの端末内で暗号化され、Google Geminiとの通信のみに使用されます。</string>
+    <string name="settings_keep_comfortable">快適さを保つ</string>
+    <string name="settings_limit_minutes">%1$d 分</string>
+</resources>

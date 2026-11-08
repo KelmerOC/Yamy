@@ -72,19 +72,40 @@ class LiveTransport(
     private val retiredAttempts = ArrayDeque<Attempt>()
     private val audioScope = CoroutineScope(SupervisorJob() + AUDIO_DISPATCHER)
 
+    private val geminiTransport = GeminiLiveTransport(applicationContext, scope).apply {
+        onEvent = { this@LiveTransport.scope.launch { this@LiveTransport.onEvent?.invoke(it) } }
+        onFailure = { this@LiveTransport.scope.launch { this@LiveTransport.onFailure?.invoke(it) } }
+        onLevels = { inp, out -> this@LiveTransport.scope.launch { this@LiveTransport.onLevels?.invoke(inp, out) } }
+    }
+    @Volatile private var isGeminiActive = false
+
     @Volatile private var activeAttempt: Attempt? = null
     @Volatile private var startedState = false
     @Volatile private var mutedState = false
 
-    val started: Boolean get() = startedState
-    val isMuted: Boolean get() = mutedState
+    val started: Boolean get() = if (isGeminiActive) geminiTransport.started else startedState
+    val isMuted: Boolean get() = if (isGeminiActive) geminiTransport.isMuted else mutedState
 
     suspend fun connect(
         api: LiveSessionProvider,
         instructions: String,
         history: JsonArray = JsonArray(emptyList()),
         language: String? = null,
+        voiceName: String = GeminiLiveTransport.DEFAULT_VOICE,
     ) = withContext(AUDIO_DISPATCHER) {
+        val isGemini = api.providerType == CredentialStore.ProviderType.GEMINI || (api.apiKey?.startsWith("AIza") == true) || (api.apiKey?.startsWith("AQ") == true) || (api.apiKey?.startsWith("sk-") != true)
+        if (isGemini) {
+            isGeminiActive = true
+            geminiTransport.connect(
+                key = api.apiKey ?: "",
+                instructions = instructions,
+                history = history,
+                language = language,
+                voiceName = voiceName,
+            )
+            return@withContext
+        }
+        isGeminiActive = false
         val attemptGeneration = detachAttempt()
         drainRetiredAttempts()
         emitZeroLevels(attemptGeneration)
@@ -153,6 +174,9 @@ class LiveTransport(
 
     /** True means accepted for delivery; every native operation runs on the audio worker. */
     fun send(event: JsonObject): Boolean {
+        if (isGeminiActive) {
+            return geminiTransport.send(event)
+        }
         val attempt = activeAttempt ?: return false
         if (!isCurrent(attempt) || !attempt.channelOpen.get()) return false
         audioScope.launch {
@@ -173,8 +197,12 @@ class LiveTransport(
     }
 
     fun mute(muted: Boolean) {
-        val attempt = activeAttempt ?: return
         mutedState = muted
+        if (isGeminiActive) {
+            geminiTransport.mute(muted)
+            return
+        }
+        val attempt = activeAttempt ?: return
         audioScope.launch {
             if (!isCurrent(attempt)) return@launch
             try { attempt.track?.setEnabled(!muted) } catch (_: Exception) { }
@@ -186,6 +214,10 @@ class LiveTransport(
     }
 
     fun close() {
+        if (isGeminiActive) {
+            geminiTransport.close()
+            return
+        }
         val attempt = activeAttempt ?: return
         attempt.closing.set(true)
         attempt.ownership.close()
@@ -201,6 +233,10 @@ class LiveTransport(
     }
 
     fun disconnect() {
+        if (isGeminiActive) {
+            geminiTransport.disconnect()
+            isGeminiActive = false
+        }
         val detached = detachAttempt()
         // This scope outlives the ViewModel so clearing the screen cannot cancel native cleanup.
         audioScope.launch { drainRetiredAttempts() }
@@ -661,12 +697,17 @@ class LiveTransport(
         class AudioFocus(message: String) : TransportException(message)
     }
 
-    private fun microphoneException() = TransportException.Microphone(applicationContext.getString(R.string.error_transport_microphone))
-    private fun connectionException() = TransportException.Connection(applicationContext.getString(R.string.error_transport_connection))
-    private fun timeoutException() = TransportException.Timeout(applicationContext.getString(R.string.error_transport_timeout))
-    private fun audioFocusException() = TransportException.AudioFocus(applicationContext.getString(R.string.error_transport_audio_focus))
+    private fun microphoneException() = microphoneException(applicationContext)
+    private fun connectionException() = connectionException(applicationContext)
+    private fun timeoutException() = timeoutException(applicationContext)
+    private fun audioFocusException() = audioFocusException(applicationContext)
 
     companion object {
+        fun microphoneException(context: Context) = TransportException.Microphone(context.getString(R.string.error_transport_microphone))
+        fun connectionException(context: Context) = TransportException.Connection(context.getString(R.string.error_transport_connection))
+        fun timeoutException(context: Context) = TransportException.Timeout(context.getString(R.string.error_transport_timeout))
+        fun audioFocusException(context: Context) = TransportException.AudioFocus(context.getString(R.string.error_transport_audio_focus))
+
         // WebRTC creation, route changes and disposal can block while joining native threads.
         // A single worker also prevents disposal racing a send, mute or stats request.
         private val AUDIO_DISPATCHER = Executors.newSingleThreadExecutor { runnable ->

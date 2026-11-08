@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">Gjør det behagelig</string>
+    <string name="settings_done">Ferdig</string>
+    <string name="settings_just_your_pace">I ditt eget tempo</string>
+    <string name="settings_meaning_subtitles">Undertekster for betydning</string>
+    <string name="settings_language_footer">Hvert språk beholder sine egne ord og framgang. Yamy finner tempoet ditt gjennom samtale.</string>
+    <string name="settings_language_running_footer">Avslutt denne samtalen for å bytte språk. Hvert språk beholder sine egne ord og framgang.</string>
+    <string name="settings_advanced">Avansert</string>
+    <string name="settings_use_own_key">Bruk egen API-nøkkel</string>
+    <string name="settings_byok_version_footer">En valgfri måte å bruke Yamy med din egen Google Gemini API-nøkkel.</string>
+    <string name="settings_key_owner_footer">Bruken administreres via Google AI Studio-kontoen din. Nøkkelen lagres kryptert på denne telefonen og sendes kun til Google Gemini.</string>
+    <string name="settings_keep_comfortable">Ta det med ro</string>
+    <string name="settings_limit_minutes">%1$d minutter</string>
+</resources>

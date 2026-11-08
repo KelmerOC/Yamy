@@ -45,7 +45,7 @@ class FinalAssessmentQueue(
     fun submit(session: SessionRecord): Boolean {
         if (session.endedAt == null || jobs.containsKey(session.id)) return false
         val passage = session.passages.lastOrNull { it.speaker == Speaker.user } ?: return false
-        if (passage.text.length < 3 || session.assessments.any { it.passageID == passage.id && it.revisionKey == passage.revisionKey }) return false
+        if (passage.text.trim().length < 2 || session.assessments.any { it.passageID == passage.id && it.revisionKey == passage.revisionKey }) return false
         val snapshot = session.copy(fragments = session.fragments.toMutableList(), assessments = session.assessments.toMutableList())
         val token = Any()
         val deadline = clock() + timeoutMillis
@@ -108,7 +108,7 @@ object FinalAssessmentRecovery {
     fun passage(session: SessionRecord): Passage? {
         if (session.endedAt == null) return null
         val passage = session.passages.lastOrNull { it.speaker == Speaker.user } ?: return null
-        return passage.takeIf { it.text.length >= 3 && session.assessments.none { assessment ->
+        return passage.takeIf { it.text.trim().length >= 2 && session.assessments.none { assessment ->
             assessment.passageID == it.id && assessment.revisionKey == it.revisionKey
         } }
     }

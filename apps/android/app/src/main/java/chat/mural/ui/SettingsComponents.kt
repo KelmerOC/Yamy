@@ -1,6 +1,7 @@
 package chat.mural.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
@@ -61,7 +62,8 @@ internal fun SettingsRow(title: String, value: String = "", enabled: Boolean = t
         Text(title, Modifier.weight(if (value.isBlank()) 1f else .53f), style = MaterialTheme.typography.bodyLarge,
             color = if (enabled) tint else MuralColors.Secondary.copy(alpha = .55f))
         if (value.isNotBlank()) Text(value, Modifier.weight(.47f), style = MaterialTheme.typography.bodyMedium,
-            color = MuralColors.Secondary.copy(alpha = if (enabled) 1f else .55f), textAlign = TextAlign.End)
+            fontWeight = FontWeight.Medium,
+            color = MuralColors.Ink.copy(alpha = if (enabled) .86f else .50f), textAlign = TextAlign.End)
         if (chevron) MuralIcon(MuralSymbol.ChevronRight, Modifier.size(13.dp), color = MuralColors.Secondary.copy(alpha = .6f))
     }
 }
@@ -75,10 +77,28 @@ internal fun SettingsChoiceRow(title: String, value: String, selected: String, o
         DropdownMenu(expanded, onDismissRequest = { expanded = false }, containerColor = MuralColors.CreamRaised,
             shape = RoundedCornerShape(22.dp), modifier = Modifier.widthIn(min = 260.dp, max = 340.dp)) {
             options.forEach { (id, label) ->
-                DropdownMenuItem(text = { Text(label, style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (id == selected) FontWeight.SemiBold else FontWeight.Normal) },
-                    trailingIcon = { if (id == selected) MuralIcon(MuralSymbol.Check, Modifier.size(17.dp)) },
-                    onClick = { expanded = false; onSelect(id) }, modifier = Modifier.testTag("$tag-$id"))
+                val isSelected = id == selected
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MuralColors.Ink else MuralColors.Ink.copy(alpha = 0.88f)
+                        )
+                    },
+                    trailingIcon = {
+                        if (isSelected) MuralIcon(MuralSymbol.Check, Modifier.size(18.dp), color = MuralColors.Orange)
+                    },
+                    onClick = { expanded = false; onSelect(id) },
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .background(
+                            if (isSelected) MuralColors.WatercolorWash else Color.Transparent,
+                            RoundedCornerShape(14.dp)
+                        )
+                        .testTag("$tag-$id")
+                )
             }
         }
     }
@@ -91,8 +111,26 @@ internal fun SettingsMeaningSwitch(checked: Boolean, onChange: () -> Unit) {
         .padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.settings_meaning_subtitles), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked, onCheckedChange = null, colors = SwitchDefaults.colors(
-            checkedThumbColor = Color.White, checkedTrackColor = MuralColors.Secondary,
-            uncheckedThumbColor = Color.White, uncheckedTrackColor = MuralColors.Secondary.copy(alpha = .18f),
+            checkedThumbColor = Color.White, checkedTrackColor = MuralColors.Orange,
+            uncheckedThumbColor = MuralColors.Secondary, uncheckedTrackColor = MuralColors.Secondary.copy(alpha = .22f),
+            uncheckedBorderColor = Color.Transparent))
+    }
+}
+
+@Composable
+internal fun SettingsSwitchRow(title: String, subtitle: String? = null, checked: Boolean, tag: String, onChange: () -> Unit) {
+    Row(Modifier.fillMaxWidth().testTag(tag)
+        .toggleable(checked, role = Role.Switch, onValueChange = { onChange() }).heightIn(min = 52.dp)
+        .padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (!subtitle.isNullOrBlank()) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+            }
+        }
+        Switch(checked, onCheckedChange = null, colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White, checkedTrackColor = MuralColors.Orange,
+            uncheckedThumbColor = MuralColors.Secondary, uncheckedTrackColor = MuralColors.Secondary.copy(alpha = .22f),
             uncheckedBorderColor = Color.Transparent))
     }
 }

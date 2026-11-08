@@ -14,7 +14,7 @@ Prepared for the current BYOK build on 12 September 2026. Replace every `[REQUIR
 | Marketing URL | `https://mural.chat/` — live |
 | Support URL | `https://mural.chat/support/` — live; hi@hackmamba.io |
 | Privacy Policy URL | `https://mural.chat/privacy/` — live |
-| Repository | https://github.com/Chuloo/mural |
+| Repository | https://github.com/KelmerOC/Yamy |
 | Operator | Hackmamba Inc., incorporated in the United States |
 | Seller | `[REQUIRED: exact enrolled Apple Developer entity]` |
 | App Review contact | `William Imoh · hi@hackmamba.io · [REQUIRED: telephone, entered privately]` |
@@ -47,7 +47,7 @@ Practise Norwegian Bokmål, Spanish from Spain, international English, French fr
 
 This version requires your own OpenAI API key, API billing and access to the supported models. API usage is billed by OpenAI. Mural has no account requirement or credit purchases in this version. Audio and selected text are sent to OpenAI while you practise; provider retention policies apply. Mural does not save raw audio.
 
-Mural’s source is available under the MIT License at github.com/Chuloo/mural.
+Mural’s source is available under the MIT License at github.com/KelmerOC/Yamy.
 
 ## Screenshot set
 

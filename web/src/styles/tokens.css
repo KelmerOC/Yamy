@@ -1,0 +1,76 @@
+/**
+ * Yamy / Mural — Design Tokens
+ * Fuente única: Nunito
+ * Paleta oficial: MuralColors + Pasteles
+ */
+
+:root {
+  /* Tipografía única */
+  --font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* MuralColors Oficiales */
+  --color-canvas: #F5F8FC;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-tint: #DCEBFA;
+  --color-surface-tint-hover: #CBE1F8;
+
+  --color-primary: #2484E0;
+  --color-primary-light: #4DA3FF;
+  --color-primary-dark: #13468B;
+  --color-primary-alpha: rgba(36, 132, 224, 0.12);
+
+  --color-accent: #EAB328;
+  --color-accent-light: #F6D04F;
+  --color-accent-alpha: rgba(234, 179, 40, 0.16);
+
+  --color-cosmic: #091838;
+  --color-cosmic-light: #162A5A;
+  --color-text-main: #091838;
+  --color-text-secondary: #4A5B78;
+  --color-text-muted: #6B7C99;
+
+  --color-border: #DCEBFA;
+  --color-border-hairline: #D4E1F0;
+  --color-border-active: #2484E0;
+
+  /* 4 Paletas Pasteles Oficiales */
+  --color-pastel-peach: #FFE3CF;
+  --color-pastel-peach-border: #F7D0B2;
+  --color-pastel-peach-text: #8A4315;
+
+  --color-pastel-lilac: #EEE6FA;
+  --color-pastel-lilac-border: #D9C8F5;
+  --color-pastel-lilac-text: #532C8C;
+
+  --color-pastel-sage: #EAEFD6;
+  --color-pastel-sage-border: #CFDCAD;
+  --color-pastel-sage-text: #39541B;
+
+  --color-pastel-butter: #FFF1C7;
+  --color-pastel-butter-border: #F7E19E;
+  --color-pastel-butter-text: #785A0A;
+
+  /* Radios */
+  --radius-pill: 999px;
+  --radius-card: 24px;
+  --radius-phone: 42px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+
+  /* Sombras suaves */
+  --shadow-subtle: 0 4px 20px rgba(9, 24, 56, 0.05);
+  --shadow-card: 0 10px 32px rgba(9, 24, 56, 0.08);
+  --shadow-phone: 0 24px 64px rgba(9, 24, 56, 0.16);
+  --shadow-glow-primary: 0 0 32px rgba(36, 132, 224, 0.35);
+  --shadow-glow-accent: 0 0 32px rgba(234, 179, 40, 0.35);
+
+  /* Transiciones */
+  --transition-fast: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-smooth: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout */
+  --max-width-content: 1240px;
+  --header-height: 72px;
+}

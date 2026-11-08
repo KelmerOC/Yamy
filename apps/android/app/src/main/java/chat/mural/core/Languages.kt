@@ -36,9 +36,45 @@ data class LanguageModule(
     val lookupUnavailableReply: String, val themeOverrides: Map<String, ConversationTheme> = emptyMap()
 ) {
     val themes get() = Themes.shared.map { themeOverrides[it.id] ?: it }
-    val defaultTitle get() = "A little $name"
-    val talkTitle get() = "A little everyday $name"
-    val settingsTitle get() = "$name · $variety"
+    val displayName: String get() = if (id == "qu") "Quechua Colla" else name
+    val uiNativeName: String get() = if (id == "qu") "Quechua Colla" else nativeName
+    val defaultTitle get() = "A little $displayName"
+    val talkTitle get() = "A little everyday $displayName"
+    val settingsTitle get() = "$displayName · $variety"
+
+    fun localizedDisplayName(appLanguageId: String): String {
+        if (id == "qu") return "Quechua Colla"
+        return LanguageNameTranslations.translateById(id, appLanguageId) ?: displayName
+    }
+
+    fun localizedOptionTitle(appLanguageId: String): String {
+        if (id == "qu") return "Quechua Colla"
+        val locName = localizedDisplayName(appLanguageId)
+        return if (locName.equals(nativeName, ignoreCase = true)) {
+            val locVar = LanguageNameTranslations.translateVariety(variety, appLanguageId)
+            "$nativeName · $locVar"
+        } else {
+            "$locName · $nativeName"
+        }
+    }
+
+    fun localizedTalkTitle(appLanguageId: String): String {
+        val label = if (id == "qu") "Quechua Colla" else nativeName
+        return when (appLanguageId.lowercase()) {
+            "es" -> "Práctica cotidiana · $label"
+            "ko" -> "일상 회화 연습 · $label"
+            "ja" -> "日常会話の練習 · $label"
+            "hi" -> "रोज़मर्रा की बातचीत · $label"
+            "pt" -> "Conversa do dia a dia · $label"
+            "fr" -> "Pratique au quotidien · $label"
+            "de" -> "Alltagsgespräch · $label"
+            "it" -> "Conversazione quotidiana · $label"
+            "zh" -> "日常会话练习 · $label"
+            "nb" -> "Litt hverdagsprat · $label"
+            "qu" -> "Sapa p'unchaw rimay · $label"
+            else -> if (id == "qu") "A little everyday Quechua Colla" else talkTitle
+        }
+    }
 }
 
 object LanguageRegistry {
@@ -201,11 +237,317 @@ object LanguageRegistry {
             "cabin" to ConversationTheme("cabin", "周末出游", "A change of scene", "mountain.2", "Local life", "一起设想一个周末旅行，选择城市、海边或乡村，讨论实际安排和喜欢做的事情。", 2),
             "traditions" to ConversationTheme("traditions", "日常习俗", "Small customs, big stories", "flag", "Local life", "用普通话聊日常习俗和节日。比较学习者熟悉的地方，避免把任何一种习惯说成所有人的共同体验。", 2))
     )
+    val quechua = LanguageModule(
+        id = "qu",
+        name = "Quechua",
+        nativeName = "Runa Simi",
+        variety = "Cusco-Collao",
+        locale = "qu-PE",
+        greeting = "¡Allillanchu!",
+        greetingWord = "allillanchu",
+        speechGuidance = "Use natural Southern Quechua (Quechua Colla / Cusco-Collao) pronunciation. Accept valid regional variants (Collao, Ayacucho, Ancash) warmly. Speak with clarity, respect and conversational warmth.",
+        writingGuidance = "Use standard Southern Quechua (Quechua Colla) orthography (trivocalic: a, i, u) with valid suffix agglutination. Keep meanings accessible.",
+        lemmaGuidance = "Give nominal roots and verb infinitives ending in -y (e.g., rimay, mikuy, wasi). Explain suffixes clearly when the learner asks.",
+        topicPlaceholder = "Ayllu, kawsay, chakra, puriy, mikhuy…",
+        lookupUnavailableReply = "Manam kunanqa chayta qhawariyta atinichu. Munaspaykiqa, tukuy imamantam rimarisunman.",
+        teachingFocus = listOf(
+            "Greetings and basic introductions (Allillanchu, imaynallam, sutiyqa).",
+            "Everyday questions, basic noun suffixes (-mi, -qa, -kuna) and present tense.",
+            "Connected past narratives (-rqa suffix), family, and everyday Andean life.",
+            "Reasons and opinions (-rayku, -manta connectors) and collaborative activities (ayni).",
+            "Cultural nuance, rich metaphorical expressions, and respectful register.",
+            "Fluent, authentic dialogue in Runa Simi across traditional and modern themes."
+        ),
+        themeOverrides = mapOf(
+            "coffee" to ConversationTheme("coffee", "Aqha / Café?", "Something warm, please", "cup.and.saucer", "Everyday", "Meet in an Andean café. Order a warm drink (mate, café) and converse in Quechua Colla.", 0),
+            "groceries" to ConversationTheme("groceries", "Qhatupi", "Find something fresh", "basket", "Everyday", "Visit a traditional Andean market (qhatu). Ask for vegetables, fruits and quantities in Quechua Colla.", 2),
+            "travel" to ConversationTheme("travel", "Puriy", "A ticket to somewhere", "tram", "Everyday", "Plan a journey through the Andes. Discuss transport, directions and stops in Quechua Colla.", 1),
+            "cabin" to ConversationTheme("cabin", "Chiriy punchaw", "A quieter kind of day", "mountain.2", "Local life", "Plan an imagined stay in an Andean village. Talk about nature, food and weaving.", 2),
+            "traditions" to ConversationTheme("traditions", "Raymikuna", "Small customs, big stories", "flag", "Local life", "Explore Andean customs, Pachamama, harvest festivals and community solidarity.", 2)
+        )
+    )
+    val korean = LanguageModule(
+        id = "ko",
+        name = "Korean",
+        nativeName = "한국어",
+        variety = "South Korea",
+        locale = "ko-KR",
+        greeting = "안녕하세요!",
+        greetingWord = "안녕하세요",
+        speechGuidance = "Use clear, natural Standard Korean (Seoul) pronunciation. Use polite conversational style (해요체, e.g., -아요/-어요) for friendly interaction, and formal polite style (하십시오체, e.g., -ㅂ니다/-습니다) when appropriate for situations requiring higher formality. Model natural intonation and speech rhythm.",
+        writingGuidance = "Use standard Korean Hangul orthography, spacing (띄어쓰기), and modern punctuation. Match politeness levels (존댓말) to the role and situation.",
+        lemmaGuidance = "Give nouns in their dictionary form without particles (조사) and verbs/adjectives in their basic dictionary infinitive ending in -다 (e.g., 가다, 먹다, 예쁘다). Keep honorific forms distinct when meaningful.",
+        topicPlaceholder = "음식, 여행, 드라마, 한국 생활…",
+        lookupUnavailableReply = "지금은 확인할 수 없습니다. 원하시면 이 주제에 대해 편하게 대화해 볼 수 있습니다.",
+        teachingFocus = listOf(
+            "기본 인사, 자기소개 및 핵심 표현 (안녕하세요, 제 이름은..., ~하고 싶어요).",
+            "일상 질문, 기본 조사(은/는, 이/가, 을/를) 및 해요체 현재 시제.",
+            "과거 시제(~았/었어요), 일상 이야기, 연결 어미(~고, ~아서/어서) 및 익숙한 상황.",
+            "이유와 의견 표현(~(으)니까, ~는 것 같아요), 미래 계획(~(으)ㄹ 거예요) 및 자연스러운 연결.",
+            "간접화법, 존댓말의 뉘앙스, 관용 표현 및 상황별 격식.",
+            "자연스럽고 풍부한 어휘를 바탕으로 한 고급 한국어 회화와 토론."
+        ),
+        themeOverrides = mapOf(
+            "coffee" to ConversationTheme("coffee", "커피 한잔?", "Something warm, please", "cup.and.saucer", "Everyday", "동네 카페에서 만납니다. 음료를 주문하고 한국어로 편안하게 하루 일과와 관심사에 대해 대화합니다.", 0),
+            "groceries" to ConversationTheme("groceries", "전통시장에서", "A little of everything", "basket", "Everyday", "한국의 전통시장이나 마트에서 장을 봅니다. 수량, 가격, 정중한 요청 표현을 연습합니다.", 2),
+            "travel" to ConversationTheme("travel", "다음 행선지", "A ticket to somewhere", "tram", "Everyday", "한국 여행을 계획합니다. 대중교통, 길 찾기, 예매에 대해 대화합니다.", 1),
+            "cabin" to ConversationTheme("cabin", "주말 힐링 여행", "A change of scene", "mountain.2", "Local life", "주말 여행을 함께 계획하며 자연, 음식, 휴식에 대해 대화합니다.", 2),
+            "traditions" to ConversationTheme("traditions", "일상과 풍습", "Small customs, big stories", "flag", "Local life", "한국의 사계절 풍습과 일상 문화를 이야기하며 경험을 나눕니다.", 2)
+        )
+    )
+    val japanese = LanguageModule(
+        id = "ja",
+        name = "Japanese",
+        nativeName = "日本語",
+        variety = "Japan",
+        locale = "ja-JP",
+        greeting = "こんにちは！",
+        greetingWord = "こんにちは",
+        speechGuidance = "Use clear, natural Standard Japanese (Tokyo pitch accent). Use polite style (丁寧語 / です・ます) as the standard friendly baseline, adapting to informal (タメ口) or honorific (敬語) when the role and situation call for it. Maintain natural conversational rhythm and particles.",
+        writingGuidance = "Use natural Japanese orthography combining Kanji, Hiragana, and Katakana with standard punctuation (、。). Match the register to the situation.",
+        lemmaGuidance = "Give nouns in their plain form without particles (助詞) and verbs/adjectives in their plain dictionary form (辞書形, e.g., 行く, 食べる, 美しい). Explain particles clearly when asked.",
+        topicPlaceholder = "アニメ、食べ物、旅行、日本の生活…",
+        lookupUnavailableReply = "今は確認できませんでした。よろしければ、このテーマについて一般的なお話をしましょう。",
+        teachingFocus = listOf(
+            "挨拶、自己紹介、基本的な表現（はじめまして、～です、～をください）。",
+            "日常的な質問、助詞（は、が、を、に、で）、丁寧語（です・ます）の現在形。",
+            "過去形（～でした、～ました）、日常の出来事、接続表現（～て、～から）。",
+            "理由や意見（～と思います、～ので）、希望（～たい）、許可や禁止。",
+            "敬語（尊敬語・謙譲語）、ニュアンス、オノマトペ、慣用句、文化的文脈。",
+            "自然で流暢な日本語による深い対話、ディスカッション、ニュアンスの使い分け。"
+        ),
+        themeOverrides = mapOf(
+            "coffee" to ConversationTheme("coffee", "カフェで一杯？", "Something warm, please", "cup.and.saucer", "Everyday", "街の喫茶店で待ち合わせ。飲み物を注文し、店員さんへの丁寧な挨拶や日常の会話を楽しみます。", 0),
+            "groceries" to ConversationTheme("groceries", "商店街でお買い物", "A little of everything", "basket", "Everyday", "活気ある商店街やスーパーで食材を買います。数量、値段の尋ね方、丁寧なお願いを練習します。", 2),
+            "travel" to ConversationTheme("travel", "次の目的地へ", "A ticket to somewhere", "tram", "Everyday", "日本国内の電車の旅を計画。ルート、乗り換え、切符の買い方について会話します。", 1),
+            "cabin" to ConversationTheme("cabin", "週末のおでかけ", "A change of scene", "mountain.2", "Local life", "温泉街や自然豊かな場所への週末旅行を計画し、のんびりと過ごす予定を話します。", 2),
+            "traditions" to ConversationTheme("traditions", "暮らしの歳時記", "Small customs, big stories", "flag", "Local life", "日本の四季折々の習慣や日々の暮らしについて語り合い、文化の違いを楽しみます。", 2)
+        )
+    )
+    val hindi = LanguageModule(
+        id = "hi",
+        name = "Hindi",
+        nativeName = "हिन्दी",
+        variety = "India",
+        locale = "hi-IN",
+        greeting = "नमस्ते!",
+        greetingWord = "नमस्ते",
+        speechGuidance = "Use clear, natural Modern Standard Hindi pronunciation. Use polite and respectful address (आप) as the friendly default, adjusting to तुम when the role or situation suggests familiarity. Model natural aspiration, retroflex consonants, and sentence intonation.",
+        writingGuidance = "Use standard Devanagari script (देवनागरी) with appropriate matras and punctuation (।, ?, !). Use natural contemporary vocabulary while accepting common Hindustani loanwords.",
+        lemmaGuidance = "Give nouns in their direct singular form with grammatical gender indicated, and verbs in the infinitive ending in -ना (e.g., जाना, खाना, बोलना). Explain postpositions (ने, को, से, में, पर) clearly.",
+        topicPlaceholder = "खाना, यात्रा, संगीत, भारत का जीवन…",
+        lookupUnavailableReply = "मैं अभी इसकी पुष्टि नहीं कर पाया। यदि आप चाहें, तो हम इस विषय पर सामान्य रूप से बातचीत कर सकते हैं।",
+        teachingFocus = listOf(
+            "अभिवादन, परिचय और सरल रोज़मर्रा के वाक्य (नमस्ते, मेरा नाम..., मुझे चाहिए)।",
+            "रोज़मर्रा के सवाल, लिंग-वचन सहमति, वर्तमान काल (होना, ता/ती/ते हैं) और बुनियादी कारक।",
+            "भूतकाल (था/थी/थे, सामान्य भूतकाल), कहानियां, ने-नियम और जानी-पहचानी परिस्थितियां।",
+            "कारण और राय (क्योंकि, मुझे लगता है कि), भविष्य काल (गा/गी/गे) और संयोजक।",
+            "सभ्य/आदरणीय भाषा (आप vs तुम), मुहावरे, लोकोक्तियां और सांस्कृतिक संदर्भ।",
+            "सहज, धाराप्रवाह और समृद्ध शब्दावली के साथ उन्नत हिंदी संवाद और चर्चा।"
+        ),
+        themeOverrides = mapOf(
+            "coffee" to ConversationTheme("coffee", "एक चाय या कॉफ़ी?", "Something warm, please", "cup.and.saucer", "Everyday", "एक कैफे में मिलें। गर्म चाय या कॉफ़ी ऑर्डर करें और अपनी पसंद और दिनचर्या के बारे में बात करें।", 0),
+            "groceries" to ConversationTheme("groceries", "सब्ज़ी मंडी में", "A little of everything", "basket", "Everyday", "स्थानीय बाज़ार में खरीदारी करें। मात्रा, भाव-तोल और विनम्र अनुरोध का अभ्यास करें।", 2),
+            "travel" to ConversationTheme("travel", "अगला पड़ाव", "A ticket to somewhere", "tram", "Everyday", "यात्रा की योजना बनाएं। ट्रेन, बस, टिकट और रास्तों के बारे में हिंदी में बात करें।", 1),
+            "cabin" to ConversationTheme("cabin", "सप्ताहांत की सैर", "A change of scene", "mountain.2", "Local life", "पहाड़ों या शांत जगह पर सप्ताहांत बिताने की योजना बनाएं। भोजन और विश्राम की चर्चा करें।", 2),
+            "traditions" to ConversationTheme("traditions", "रीति-रिवाज़ और पर्व", "Small customs, big stories", "flag", "Local life", "त्योहारों, खान-पान और दैनिक रीति-रिवाज़ों के बारे में बात करें और अनुभव साझा करें।", 2)
+        )
+    )
+    val originarias = listOf(quechua)
+    val additionalLanguages = listOf(korean, japanese, hindi)
     val all = listOf(norwegian, spanish, english, french, german, italian, portuguese, mandarin)
-    fun get(id: String) = all.firstOrNull { it.id == id }
+    val supported = all + originarias + additionalLanguages
+    fun get(id: String) = supported.firstOrNull { it.id == id }
+}
+
+object LanguageNameTranslations {
+    private val byId: Map<String, Map<String, String>> = mapOf(
+        "es" to mapOf(
+            "es" to "Español", "en" to "Inglés", "ko" to "Coreano", "ja" to "Japonés",
+            "hi" to "Hindi", "fr" to "Francés", "de" to "Alemán", "it" to "Italiano",
+            "pt" to "Portugués", "zh" to "Chino mandarín", "nb" to "Noruego", "qu" to "Quechua Colla",
+            "pl" to "Polaco", "ar" to "Árabe", "uk" to "Ucraniano", "zh_Hans" to "Chino (simplificado)"
+        ),
+        "en" to mapOf(
+            "es" to "Spanish", "en" to "English", "ko" to "Korean", "ja" to "Japanese",
+            "hi" to "Hindi", "fr" to "French", "de" to "German", "it" to "Italian",
+            "pt" to "Portuguese", "zh" to "Mandarin Chinese", "nb" to "Norwegian", "qu" to "Quechua Colla",
+            "pl" to "Polish", "ar" to "Arabic", "uk" to "Ukrainian", "zh_Hans" to "Chinese (Simplified)"
+        ),
+        "fr" to mapOf(
+            "es" to "Espagnol", "en" to "Anglais", "ko" to "Coréen", "ja" to "Japonais",
+            "hi" to "Hindi", "fr" to "Français", "de" to "Allemand", "it" to "Italien",
+            "pt" to "Portugais", "zh" to "Chinois mandarin", "nb" to "Norvégien", "qu" to "Quechua Colla",
+            "pl" to "Polonais", "ar" to "Arabe", "uk" to "Ukrainien", "zh_Hans" to "Chinois (simplifié)"
+        ),
+        "de" to mapOf(
+            "es" to "Spanisch", "en" to "Englisch", "ko" to "Koreanisch", "ja" to "Japanisch",
+            "hi" to "Hindi", "fr" to "Französisch", "de" to "Deutsch", "it" to "Italienisch",
+            "pt" to "Portugiesisch", "zh" to "Mandarin-Chinesisch", "nb" to "Norwegisch", "qu" to "Quechua Colla",
+            "pl" to "Polnisch", "ar" to "Arabisch", "uk" to "Ukrainisch", "zh_Hans" to "Chinesisch (vereinfacht)"
+        ),
+        "it" to mapOf(
+            "es" to "Spagnolo", "en" to "Inglese", "ko" to "Coreano", "ja" to "Giapponese",
+            "hi" to "Hindi", "fr" to "Francese", "de" to "Tedesco", "it" to "Italiano",
+            "pt" to "Portoghese", "zh" to "Cinese mandarino", "nb" to "Norvegese", "qu" to "Quechua Colla",
+            "pl" to "Polacco", "ar" to "Arabo", "uk" to "Ucraino", "zh_Hans" to "Cinese (semplificato)"
+        ),
+        "pt" to mapOf(
+            "es" to "Espanhol", "en" to "Inglês", "ko" to "Coreano", "ja" to "Japonês",
+            "hi" to "Hindi", "fr" to "Francês", "de" to "Alemão", "it" to "Italiano",
+            "pt" to "Português", "zh" to "Chinês mandarim", "nb" to "Norueguês", "qu" to "Quechua Colla",
+            "pl" to "Polonês", "ar" to "Árabe", "uk" to "Ucraniano", "zh_Hans" to "Chinês (simplificado)"
+        ),
+        "nb" to mapOf(
+            "es" to "Spansk", "en" to "Engelsk", "ko" to "Koreansk", "ja" to "Japansk",
+            "hi" to "Hindi", "fr" to "Fransk", "de" to "Tysk", "it" to "Italiensk",
+            "pt" to "Portugisisk", "zh" to "Mandarin-kinesisk", "nb" to "Norsk", "qu" to "Quechua Colla",
+            "pl" to "Polsk", "ar" to "Arabisk", "uk" to "Ukrainsk", "zh_Hans" to "Kinesisk (forenklet)"
+        ),
+        "zh" to mapOf(
+            "es" to "西班牙语", "en" to "英语", "ko" to "韩语", "ja" to "日语",
+            "hi" to "印地语", "fr" to "法语", "de" to "德语", "it" to "意大利语",
+            "pt" to "葡萄牙语", "zh" to "普通话", "nb" to "挪威语", "qu" to "Quechua Colla",
+            "pl" to "波兰语", "ar" to "阿拉伯语", "uk" to "乌克兰语", "zh_Hans" to "中文（简体）"
+        ),
+        "ko" to mapOf(
+            "es" to "스페인어", "en" to "영어", "ko" to "한국어", "ja" to "일본어",
+            "hi" to "힌디어", "fr" to "프랑스어", "de" to "독일어", "it" to "이탈리아어",
+            "pt" to "포르투갈어", "zh" to "중국어(표준어)", "nb" to "노르웨이어", "qu" to "Quechua Colla",
+            "pl" to "폴란드어", "ar" to "아랍어", "uk" to "우크라이나어", "zh_Hans" to "중국어(간체)"
+        ),
+        "ja" to mapOf(
+            "es" to "スペイン語", "en" to "英語", "ko" to "韓国語", "ja" to "日本語",
+            "hi" to "ヒンディー語", "fr" to "フランス語", "de" to "ドイツ語", "it" to "イタリア語",
+            "pt" to "ポルトガル語", "zh" to "中国語（標準語）", "nb" to "ノルウェー語", "qu" to "Quechua Colla",
+            "pl" to "ポーランド語", "ar" to "アラビア語", "uk" to "ウクライナ語", "zh_Hans" to "中国語（簡体字）"
+        ),
+        "hi" to mapOf(
+            "es" to "स्पैनिश", "en" to "अंग्रेज़ी", "ko" to "कोरियाई", "ja" to "जापानी",
+            "hi" to "हिन्दी", "fr" to "फ़्रेंच", "de" to "जर्मन", "it" to "इतालवी",
+            "pt" to "पुर्तगाली", "zh" to "मंदारिन चीनी", "nb" to "नॉर्वेजियन", "qu" to "Quechua Colla",
+            "pl" to "पोलिश", "ar" to "अरबी", "uk" to "यूक्रेनी", "zh_Hans" to "चीनी (सरलीकृत)"
+        ),
+        "qu" to mapOf(
+            "es" to "Kastilla simi", "en" to "Inglés simi", "ko" to "Coreano simi", "ja" to "Japonés simi",
+            "hi" to "Hindi simi", "fr" to "Francés simi", "de" to "Alemán simi", "it" to "Italiano simi",
+            "pt" to "Portugués simi", "zh" to "Chino simi", "nb" to "Noruego simi", "qu" to "Quechua Colla",
+            "pl" to "Polaco simi", "ar" to "Árabe simi", "uk" to "Ucraniano simi", "zh_Hans" to "Chino (simplificado)"
+        )
+    )
+
+    private val meaningCanonicalToCode = mapOf(
+        "English" to "en",
+        "French" to "fr",
+        "German" to "de",
+        "Spanish" to "es",
+        "Norwegian" to "nb",
+        "Portuguese" to "pt",
+        "Italian" to "it",
+        "Chinese (Simplified)" to "zh_Hans",
+        "Polish" to "pl",
+        "Arabic" to "ar",
+        "Ukrainian" to "uk",
+        "Korean" to "ko",
+        "Japanese" to "ja",
+        "Hindi" to "hi",
+        "Quechua Colla" to "qu",
+        "Quechua" to "qu"
+    )
+
+    fun translateById(targetId: String, appLanguageId: String): String? {
+        if (targetId == "qu") return "Quechua Colla"
+        val langMap = byId[appLanguageId.lowercase()] ?: byId["es"]!!
+        return langMap[targetId]
+    }
+
+    fun translateMeaningName(canonicalName: String, appLanguageId: String): String {
+        if (canonicalName.equals("Quechua Colla", ignoreCase = true) || canonicalName.equals("Quechua", ignoreCase = true)) {
+            return "Quechua Colla"
+        }
+        val code = meaningCanonicalToCode[canonicalName] ?: return canonicalName
+        return translateById(code, appLanguageId) ?: canonicalName
+    }
+
+    fun translateVariety(variety: String, appLanguageId: String): String {
+        if (appLanguageId.lowercase() == "es") {
+            return when (variety) {
+                "Spain" -> "España"
+                "International" -> "Internacional"
+                "France" -> "Francia"
+                "Germany" -> "Alemania"
+                "Italy" -> "Italia"
+                "Brazil" -> "Brasil"
+                "Mainland China" -> "China continental"
+                "South Korea" -> "Corea del Sur"
+                "Japan" -> "Japón"
+                "India" -> "India"
+                else -> variety
+            }
+        }
+        return variety
+    }
 }
 
 object MeaningLanguages {
-    val all = listOf("English", "French", "German", "Spanish", "Norwegian", "Portuguese", "Italian", "Chinese (Simplified)", "Polish", "Arabic", "Ukrainian")
-    fun greeting(language: String) = mapOf("English" to "Hi!", "French" to "Salut !", "German" to "Hallo!", "Spanish" to "¡Hola!", "Norwegian" to "Hei!", "Portuguese" to "Olá!", "Italian" to "Ciao!", "Chinese (Simplified)" to "你好！", "Chinese" to "你好！", "Polish" to "Cześć!", "Arabic" to "مرحبًا!", "Ukrainian" to "Привіт!")[language] ?: "Hi!"
+    val all = listOf(
+        "English", "French", "German", "Spanish", "Norwegian", "Portuguese",
+        "Italian", "Chinese (Simplified)", "Polish", "Arabic", "Ukrainian",
+        "Korean", "Japanese", "Hindi", "Quechua Colla"
+    )
+    fun localizedLabel(language: String, appLanguageId: String): String =
+        LanguageNameTranslations.translateMeaningName(language, appLanguageId)
+
+    fun greeting(language: String) = mapOf(
+        "English" to "Hi!", "French" to "Salut !", "German" to "Hallo!", "Spanish" to "¡Hola!",
+        "Norwegian" to "Hei!", "Portuguese" to "Olá!", "Italian" to "Ciao!",
+        "Chinese (Simplified)" to "你好！", "Chinese" to "你好！", "Polish" to "Cześć!",
+        "Arabic" to "مرحبًا!", "Ukrainian" to "Привіт!",
+        "Korean" to "안녕하세요!", "Japanese" to "こんにちは！", "Hindi" to "नमस्ते!",
+        "Quechua Colla" to "¡Allillanchu!", "Quechua" to "¡Allillanchu!"
+    )[language] ?: "Hi!"
 }
+
+data class AppLanguage(
+    val id: String,
+    val name: String,
+    val nativeName: String,
+    val localeTag: String
+) {
+    val uiNativeName: String get() = if (id == "qu") "Quechua Colla" else nativeName
+
+    fun localizedOptionTitle(appLanguageId: String): String {
+        if (id == "qu") return "Quechua Colla"
+        val locName = LanguageNameTranslations.translateById(id, appLanguageId) ?: name
+        return if (nativeName.equals(locName, ignoreCase = true)) {
+            nativeName
+        } else {
+            "$nativeName ($locName)"
+        }
+    }
+}
+
+object AppLanguages {
+    val spanish = AppLanguage("es", "Spanish", "Español", "es")
+    val english = AppLanguage("en", "English", "English", "en")
+    val korean = AppLanguage("ko", "Korean", "한국어", "ko")
+    val japanese = AppLanguage("ja", "Japanese", "日本語", "ja")
+    val hindi = AppLanguage("hi", "Hindi", "हिन्दी", "hi")
+    val french = AppLanguage("fr", "French", "Français", "fr")
+    val german = AppLanguage("de", "German", "Deutsch", "de")
+    val italian = AppLanguage("it", "Italian", "Italiano", "it")
+    val portuguese = AppLanguage("pt", "Portuguese", "Português", "pt")
+    val chinese = AppLanguage("zh", "Chinese", "中文", "zh")
+    val norwegian = AppLanguage("nb", "Norwegian", "Norsk", "nb")
+    val quechua = AppLanguage("qu", "Quechua Colla", "Runa Simi", "qu")
+
+    val all = listOf(spanish, english, korean, japanese, hindi, french, german, italian, portuguese, chinese, norwegian, quechua)
+
+    fun get(id: String?): AppLanguage = all.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: spanish
+
+    fun defaultForSystem(locale: java.util.Locale = java.util.Locale.getDefault()): AppLanguage {
+        val lang = locale.language.lowercase().let { if (it == "no") "nb" else it }
+        return all.firstOrNull { it.id == lang } ?: spanish
+    }
+}
+

@@ -205,6 +205,11 @@ class HostedConversationBindings(private val scope: CoroutineScope, private val 
     }
     companion object {
         const val POST_END_MILLIS = 120_000L
-        private val POST_END_PURPOSES = setOf(HelperPurpose.MEANING, HelperPurpose.LOOKUP, HelperPurpose.ASSESSMENT)
+        private val POST_END_PURPOSES = setOf(
+            HelperPurpose.MEANING,
+            HelperPurpose.LOOKUP,
+            HelperPurpose.ASSESSMENT,
+            HelperPurpose.TEST
+        )
     }
 }

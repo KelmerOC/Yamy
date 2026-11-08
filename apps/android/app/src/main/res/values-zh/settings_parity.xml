@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">舒适设置</string>
+    <string name="settings_done">完成</string>
+    <string name="settings_just_your_pace">按自己的节奏</string>
+    <string name="settings_meaning_subtitles">释义字幕</string>
+    <string name="settings_language_footer">每种语言都保留各自的词汇和学习进度。Yamy会通过对话找到最适合你的节奏。</string>
+    <string name="settings_language_running_footer">结束本次对话以切换语言。每种语言都保留各自的词汇和学习进度。</string>
+    <string name="settings_advanced">高级设置</string>
+    <string name="settings_use_own_key">使用个人 API 密钥</string>
+    <string name="settings_byok_version_footer">使用个人 Google Gemini API 密钥运行 Yamy 的可选方式。</string>
+    <string name="settings_key_owner_footer">用量通过你的 Google AI Studio 账户管理。密钥加密保存在本设备中，仅发送给 Google Gemini。</string>
+    <string name="settings_keep_comfortable">保持舒适</string>
+    <string name="settings_limit_minutes">%1$d 分钟</string>
+</resources>

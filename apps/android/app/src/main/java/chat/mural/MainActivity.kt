@@ -49,6 +49,18 @@ class MainActivity : ComponentActivity() {
     private val purchases: MinutePurchaseViewModel by viewModels()
     private val changingAccount get() = account.transitionBusy.value
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val prefs = newBase.getSharedPreferences("mural_voice_settings", android.content.Context.MODE_PRIVATE)
+        val savedLang = prefs.getString("app_language", null)
+        val appLang = chat.mural.core.AppLanguages.get(savedLang)
+        val locale = java.util.Locale.forLanguageTag(appLang.localeTag)
+        java.util.Locale.setDefault(locale)
+        val config = android.content.res.Configuration(newBase.resources.configuration)
+        config.setLocale(locale)
+        config.setLayoutDirection(locale)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MandarinPinyin.reader = IcuHanReader()
@@ -56,6 +68,13 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+            val imeVisible = insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())
+            if (!imeVisible && view.scrollY != 0) {
+                view.scrollTo(0, 0)
+            }
+            androidx.core.view.ViewCompat.onApplyWindowInsets(view, insets)
+        }
         purchases.bindAccountState(account.state, account.transitionBusy)
         lifecycleScope.launch {
             combine(account.state, account.transitionBusy) { state, changing -> state.copy(busy = state.busy || changing) }
@@ -106,6 +125,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val isDark = vm.darkTheme
+            androidx.compose.runtime.SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !isDark
+                    isAppearanceLightNavigationBars = !isDark
+                }
+            }
+
+            chat.mural.ui.MuralTheme(darkTheme = isDark) {
             MuralStartup(loading = vm.loadingHistory) {
             MuralApp(
                 vm = vm,
@@ -120,7 +148,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onOpenAppSettings = if (microphonePermanentlyDenied) ({ openAppSettings() }) else null,
-                onExport = { exportLauncher.launch("Mural-learning-backup.json") },
+                onExport = { exportLauncher.launch("Yamy-learning-backup.json") },
                 onImport = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
                 account = account,
                 onGoogleSignIn = ::signInWithGoogle,
@@ -130,6 +158,7 @@ class MainActivity : ComponentActivity() {
                 purchases = purchases,
                 onBuyMinutes = { sku -> if (!changingAccount) purchases.launch(this@MainActivity, sku) },
             )
+            }
             }
         }
     }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">편안하게 맞추기</string>
+    <string name="settings_done">완료</string>
+    <string name="settings_just_your_pace">나만의 속도로</string>
+    <string name="settings_meaning_subtitles">의미 자막</string>
+    <string name="settings_language_footer">각 언어는 고유한 단어와 학습 진도를 유지합니다. Yamy은 대화를 통해 사용자의 속도에 맞춥니다.</string>
+    <string name="settings_language_running_footer">언어를 변경하려면 이 대화를 종료하세요. 각 언어는 고유한 단어와 학습 진도를 유지합니다.</string>
+    <string name="settings_advanced">고급 설정</string>
+    <string name="settings_use_own_key">개인 API 키 사용</string>
+    <string name="settings_byok_version_footer">개인 Google Gemini API 키로 Yamy을 사용할 수 있는 선택 옵션입니다.</string>
+    <string name="settings_key_owner_footer">사용량은 Google AI Studio 계정을 통해 관리됩니다. 키는 이 기기에 암호화되어 보관되며 Google Gemini에만 전송됩니다.</string>
+    <string name="settings_keep_comfortable">편안한 상태 유지</string>
+    <string name="settings_limit_minutes">%1$d분</string>
+</resources>

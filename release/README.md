@@ -6,8 +6,8 @@
 
 - [x] Complete the [September 12 security review](security-audit-2026-09-12.md), publish fixes in `0b2cf65`, deploy the corrected backend and install the signed app update. **60 Core tests and two focused UI checks passed.** Installation succeeded at 17:20 CEST; iOS blocked the subsequent launch because the phone was locked.
 - [x] Publish Google OAuth to **In production**, verify mural.chat ownership through Cloudflare DNS, and publish the verified Mural consent branding. Sensitive/restricted scope verification is not required for the requested basic identity scopes.
-- [x] Publish [the iPhone app repository](https://github.com/Chuloo/mural) under MIT. Earlier CI at `f2f1a78` passed the Swift core and server jobs; the later backend and native checks are recorded separately below.
-- [x] Publish [the separate website repository](https://github.com/Chuloo/mural-website), including update `ab20d41`, and make [mural.chat](https://mural.chat/) available over HTTPS.
+- [x] Publish [the iPhone app repository](https://github.com/KelmerOC/Yamy) under MIT. Earlier CI at `f2f1a78` passed the Swift core and server jobs; the later backend and native checks are recorded separately below.
+- [x] Publish [the separate website repository](https://github.com/KelmerOC/Yamy), including update `ab20d41`, and make [mural.chat](https://mural.chat/) available over HTTPS.
 - [x] Verify the live **138,707-byte, 1733 × 908** JPEG social image, updated OG/X metadata, favicon ICO and Apple touch PNG. The matching Mural icon was uploaded to the live Stripe account and its branding setting persisted. This verifies branding, not payment activation.
 - [x] Enable the website's email access list with private database storage, consent, duplicate handling, admission limits and retention. A live browser submission and repeat request produced one database row; the synthetic test address was removed afterward. No invitations are sent automatically.
 - [x] Verify the privacy, terms and support pages on the custom domain return HTTP 200 without login. Confirm the operator as **Hackmamba Inc., incorporated in the United States**, with support at hi@hackmamba.io.

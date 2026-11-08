@@ -28,6 +28,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import chat.mural.core.TopicEcosystemStore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import chat.mural.MuralViewModel
 import chat.mural.R
 import chat.mural.core.ConversationTheme
+import chat.mural.core.localized
 import chat.mural.core.TopicBrief
 import chat.mural.core.WordState
 import java.time.Instant
@@ -68,11 +71,19 @@ import java.time.format.DateTimeFormatter
 fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (String) -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("All") }
-    var current by rememberSaveable { mutableStateOf(false) }
-    val categories = remember(vm.language.id) { listOf("All") + vm.language.themes.map { it.category }.distinct() }
-    val themes = vm.language.themes.filter {
-        (category == "All" || it.category == category) &&
-            (search.isBlank() || it.title.contains(search, true) || it.subtitle.contains(search, true) || it.category.contains(search, true))
+    var createCustom by rememberSaveable { mutableStateOf(false) }
+    var selectedThemeForDetail by remember { mutableStateOf<ConversationTheme?>(null) }
+    val favorites = vm.favoriteThemeIDs
+    val allThemes = vm.allThemes
+    val localizedThemes = remember(allThemes, vm.appLanguage) {
+        allThemes.map { it.localized(vm.appLanguage) }
+    }
+    val categories = remember(vm.language.id, localizedThemes) { listOf("All", "Favorites") + localizedThemes.map { it.category }.distinct() }
+    val themes = remember(vm.language.id, category, search, favorites, localizedThemes) {
+        localizedThemes.filter {
+            (category == "All" || (category == "Favorites" && it.id in favorites) || it.category == category) &&
+                (search.isBlank() || it.title.contains(search, true) || it.subtitle.contains(search, true) || it.category.contains(search, true))
+        }.sortedWith(compareByDescending<ConversationTheme> { it.id in favorites }.thenBy { it.title })
     }
 
     LazyVerticalGrid(columns = GridCells.Adaptive(if (LocalDensity.current.fontScale > 1.3f) 260.dp else 150.dp),
@@ -87,11 +98,28 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
                 stringResource(R.string.topics_subtitle), Modifier.padding(top = 20.dp, bottom = 10.dp))
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Surface(Modifier.fillMaxWidth().clickable(role = Role.Button) { vm.chooseTheme(null); onChoose() },
+            Surface(Modifier.fillMaxWidth().clickable(role = Role.Button) { vm.requestChooseTheme(null) { onChoose() } },
                 shape = RoundedCornerShape(26.dp), color = MuralColors.Surface.copy(alpha = .85f)) {
                 Row(Modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MuralIcon(MuralSymbol.Wave)
                     Text(stringResource(R.string.topics_just_talk), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    MuralIcon(MuralSymbol.ChevronRight, Modifier.size(19.dp))
+                }
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Surface(
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { createCustom = true },
+                shape = RoundedCornerShape(26.dp),
+                color = if (MuralColors.isDark) MuralColors.Butter else MuralColors.Butter.copy(alpha = .75f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MuralColors.YellowAccent.copy(alpha = if (MuralColors.isDark) 0.35f else 0.45f))
+            ) {
+                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    MuralIcon(MuralSymbol.Sparkles, Modifier.size(24.dp), color = MuralColors.Orange)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(stringResource(R.string.topics_create_custom), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.topics_create_custom_subtitle), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                    }
                     MuralIcon(MuralSymbol.ChevronRight, Modifier.size(19.dp))
                 }
             }
@@ -102,94 +130,528 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
                     FilterChip(selected = category == item, onClick = { category = item }, label = { Text(categoryLabel(item), style = MaterialTheme.typography.bodySmall) },
                         shape = CircleShape, border = null,
                         colors = FilterChipDefaults.filterChipColors(containerColor = MuralColors.Surface.copy(alpha = .70f),
-                            selectedContainerColor = MuralColors.Peach, selectedLabelColor = MuralColors.Ink),
+                            selectedContainerColor = MuralColors.WatercolorWash, selectedLabelColor = MuralColors.Ink),
                         modifier = Modifier.height(44.dp))
                 }
             }
         }
         itemsIndexed(themes, key = { _, theme -> theme.id }) { index, theme ->
-            ThemeCard(theme, index) {
-                if (theme.id == "today") current = true
-                else { vm.chooseTheme(theme); onChoose() }
+            ThemeCard(
+                theme = theme,
+                index = index,
+                isFavorite = theme.id in favorites,
+                currentMcer = vm.getThemeMcerLevel(theme.id),
+                onToggleFavorite = { vm.toggleFavoriteTheme(theme.id) }
+            ) {
+                if (theme.id == "today") createCustom = true
+                else selectedThemeForDetail = theme
             }
         }
         if (themes.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
             Text(stringResource(R.string.topics_no_results), color = MuralColors.Secondary, modifier = Modifier.padding(vertical = 28.dp))
         }
     }
-    if (current) CurrentTopicDialog(vm, onDismiss = { current = false }, onFind = onCurrentTopic, onDiscuss = {
-        vm.discuss(it); current = false; onChoose()
-    })
+    if (createCustom) {
+        CreateCustomThemeDialog(
+            vm = vm,
+            onDismiss = { createCustom = false },
+            onStartVoice = { theme ->
+                vm.requestChooseTheme(theme) {
+                    createCustom = false
+                    onChoose()
+                }
+            },
+            onStartWritten = { theme ->
+                vm.requestChooseTheme(theme) {
+                    vm.startWritten(theme)
+                    createCustom = false
+                    onChoose()
+                }
+            }
+        )
+    }
+    selectedThemeForDetail?.let { theme ->
+        ThemeDetailDialog(
+            theme = theme,
+            vm = vm,
+            onDismiss = { selectedThemeForDetail = null },
+            onStartVoice = {
+                vm.requestChooseTheme(theme) {
+                    selectedThemeForDetail = null
+                    onChoose()
+                }
+            },
+            onStartWritten = {
+                vm.requestChooseTheme(theme) {
+                    vm.startWritten(theme)
+                    selectedThemeForDetail = null
+                    onChoose()
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun ThemeCard(theme: ConversationTheme, index: Int, onClick: () -> Unit) {
+private fun ThemeCard(
+    theme: ConversationTheme,
+    index: Int,
+    isFavorite: Boolean,
+    currentMcer: String,
+    onToggleFavorite: () -> Unit,
+    onClick: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
         shape = RoundedCornerShape(26.dp),
         color = MuralColors.Panels.getOrElse(theme.colorIndex) { MuralColors.Panels[index % MuralColors.Panels.size] },
     ) {
-        Column(Modifier.fillMaxWidth().heightIn(min = 180.dp).padding(19.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-            MuralIcon(themeSymbol(theme.id), Modifier.size(31.dp), color = MuralColors.Secondary)
+        Column(Modifier.fillMaxWidth().heightIn(min = 180.dp).padding(19.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                MuralIcon(themeSymbol(theme.id), Modifier.size(31.dp), color = MuralColors.CardSecondary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(shape = RoundedCornerShape(8.dp), color = MuralColors.CardInk.copy(alpha = 0.08f)) {
+                        Text(currentMcer, color = MuralColors.CardInk, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onToggleFavorite),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        MuralIcon(
+                            MuralSymbol.Heart,
+                            Modifier.size(20.dp),
+                            color = if (isFavorite) MuralColors.Orange else MuralColors.CardSecondary.copy(alpha = .45f),
+                            filled = isFavorite,
+                            description = stringResource(R.string.topics_favorite_toggle)
+                        )
+                    }
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(theme.title, style = MaterialTheme.typography.titleMedium)
-                Text(theme.subtitle, color = MuralColors.Secondary, style = MaterialTheme.typography.bodySmall)
+                Text(theme.title, color = MuralColors.CardInk, style = MaterialTheme.typography.titleMedium)
+                Text(theme.subtitle, color = MuralColors.CardSecondary, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
 
 @Composable
-private fun CurrentTopicDialog(
+private fun ThemeDetailDialog(
+    theme: ConversationTheme,
     vm: MuralViewModel,
     onDismiss: () -> Unit,
-    onFind: (String) -> Unit,
-    onDiscuss: (TopicBrief) -> Unit,
+    onStartVoice: () -> Unit,
+    onStartWritten: () -> Unit
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
-    val uriHandler = LocalUriHandler.current
+    var isFav by rememberSaveable(theme.id) { mutableStateOf(vm.isThemeFavorite(theme.id)) }
+    var selectedMcer by rememberSaveable(theme.id) { mutableStateOf(vm.getThemeMcerLevel(theme.id)) }
+    var selectedPersonality by rememberSaveable(theme.id) { mutableStateOf(vm.getThemePersonality(theme.id)) }
+    var selectedPedagogicalMode by rememberSaveable(theme.id) { mutableStateOf(vm.getThemePedagogicalMode(theme.id)) }
+    val pastSessions = remember(theme.id) { vm.getSessionsForTheme(theme.id) }
+    val themeMemory = remember(theme.id) { vm.getThemeMemory(theme.id) }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), color = MuralColors.Surface) {
             LazyColumn(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item { PageHeading(stringResource(R.string.topics_current_dialog_eyebrow), stringResource(R.string.topics_current_dialog_title), stringResource(R.string.topics_current_dialog_subtitle)) }
                 item {
-                    MuralTextField(
-                        query,
-                        { query = it.take(160) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(vm.language.topicPlaceholder) },
-                        minLines = 2,
-                        maxLines = 4,
-                    )
-                }
-                item {
-                    Button(onClick = { onFind(query.trim()) }, enabled = query.isNotBlank() && !vm.working, modifier = Modifier.fillMaxWidth()) {
-                        if (vm.working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text(if (vm.working) "  " + stringResource(R.string.topics_finding_button) else stringResource(R.string.topics_find_button))
-                    }
-                }
-                vm.topicResult?.let { brief ->
-                    item { Text(inlineMarkdown(brief.text), style = MaterialTheme.typography.bodyLarge) }
-                    if (brief.sources.isNotEmpty()) {
-                        item { Text(stringResource(R.string.topics_sources_heading), fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() }) }
-                        items(brief.sources.filter { it.safeUrl() != null }) { source ->
-                            Text(
-                                "↗ ${source.title}",
-                                color = MuralColors.Orange,
-                                modifier = Modifier.fillMaxWidth().clickable { source.safeUrl()?.let(uriHandler::openUri) }.padding(vertical = 7.dp),
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1f)) {
+                            MuralIcon(themeSymbol(theme.id), Modifier.size(32.dp), color = MuralColors.Secondary)
+                            Column {
+                                Text(theme.title, style = MaterialTheme.typography.titleLarge)
+                                Text(categoryLabel(theme.category), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                            }
+                        }
+                        Box(
+                            Modifier.size(40.dp).clip(CircleShape).background(MuralColors.Surface.copy(alpha = 0.8f))
+                                .clickable(role = Role.Button) {
+                                    isFav = vm.toggleFavoriteTheme(theme.id)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            MuralIcon(
+                                MuralSymbol.Heart,
+                                Modifier.size(24.dp),
+                                color = if (isFav) MuralColors.Orange else MuralColors.Secondary.copy(alpha = 0.5f),
+                                filled = isFav,
+                                description = stringResource(R.string.topics_favorite_toggle)
                             )
                         }
                     }
-                    item {
-                        Button(
-                            onClick = { onDiscuss(brief) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Orange, contentColor = MuralColors.Ink),
-                        ) { Text(stringResource(R.string.topics_talk_about_button)) }
+                }
+                item {
+                    Text(theme.situation, style = MaterialTheme.typography.bodyMedium, color = MuralColors.Ink.copy(alpha = 0.85f))
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.theme_mcer_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(TopicEcosystemStore.MCER_LEVELS) { level ->
+                                FilterChip(
+                                    selected = selectedMcer == level,
+                                    onClick = {
+                                        selectedMcer = level
+                                        vm.setThemeMcerLevel(theme.id, level)
+                                    },
+                                    label = { Text(level, fontWeight = if (selectedMcer == level) FontWeight.Bold else FontWeight.Normal) },
+                                    shape = CircleShape,
+                                    border = null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                        selectedContainerColor = MuralColors.Orange,
+                                        selectedLabelColor = MuralColors.Ink
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
-                item { Text(stringResource(R.string.topics_sources_note), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary) }
-                item { MuralTextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_close)) } }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.theme_personality_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                        val personalities = listOf(
+                            TopicEcosystemStore.PERSONALITY_FRIENDLY to R.string.theme_personality_friendly,
+                            TopicEcosystemStore.PERSONALITY_PROFESSIONAL to R.string.theme_personality_professional,
+                            TopicEcosystemStore.PERSONALITY_CASUAL to R.string.theme_personality_casual,
+                            TopicEcosystemStore.PERSONALITY_BUSY to R.string.theme_personality_busy
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(personalities) { (id, resId) ->
+                                FilterChip(
+                                    selected = selectedPersonality == id,
+                                    onClick = {
+                                        selectedPersonality = id
+                                        vm.setThemePersonality(theme.id, id)
+                                    },
+                                    label = { Text(stringResource(resId)) },
+                                    shape = CircleShape,
+                                    border = null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                        selectedContainerColor = MuralColors.Peach,
+                                        selectedLabelColor = MuralColors.Ink
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.theme_pedagogical_mode_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                        val modes = listOf(
+                            TopicEcosystemStore.MODE_EDUCATION to R.string.theme_mode_education,
+                            TopicEcosystemStore.MODE_CONVERSATION to R.string.theme_mode_conversation
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(modes) { (id, resId) ->
+                                FilterChip(
+                                    selected = selectedPedagogicalMode == id,
+                                    onClick = {
+                                        selectedPedagogicalMode = id
+                                        vm.setThemePedagogicalMode(theme.id, id)
+                                    },
+                                    label = { Text(stringResource(resId)) },
+                                    shape = CircleShape,
+                                    border = null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                        selectedContainerColor = MuralColors.Butter,
+                                        selectedLabelColor = MuralColors.Ink
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.theme_history_title), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                        if (!themeMemory.isNullOrBlank()) {
+                            Surface(shape = RoundedCornerShape(14.dp), color = MuralColors.Cream.copy(alpha = 0.5f), modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(stringResource(R.string.theme_history_last_session), style = MaterialTheme.typography.labelSmall, color = MuralColors.Secondary)
+                                    Text(themeMemory, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                        if (pastSessions.isEmpty()) {
+                            Text(stringResource(R.string.theme_history_empty), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                        } else {
+                            pastSessions.take(3).forEach { session ->
+                                val durationMinutes = ((session.endedAt?.let { it - session.startedAt } ?: session.voiceSeconds) / 60.0).toInt().coerceAtLeast(1)
+                                Text(
+                                    stringResource(R.string.theme_history_session_item, formatDate(session.startedAt), durationMinutes, session.passages.size),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MuralColors.Secondary
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = onStartVoice,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Orange, contentColor = MuralColors.Ink)
+                        ) {
+                            MuralIcon(MuralSymbol.Mic, modifier = Modifier.size(18.dp), color = MuralColors.Ink)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.theme_start_voice), fontWeight = FontWeight.SemiBold)
+                        }
+                        Button(
+                            onClick = onStartWritten,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Sage.copy(alpha = 0.5f), contentColor = MuralColors.Ink)
+                        ) {
+                            MuralIcon(MuralSymbol.Keyboard, modifier = Modifier.size(18.dp), color = MuralColors.Ink)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.theme_start_written), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                item {
+                    MuralTextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateCustomThemeDialog(
+    vm: MuralViewModel,
+    onDismiss: () -> Unit,
+    onStartVoice: (ConversationTheme) -> Unit,
+    onStartWritten: (ConversationTheme) -> Unit
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var generatedDraft by remember { mutableStateOf<MuralViewModel.GeneratedCustomTheme?>(null) }
+    var isFav by remember { mutableStateOf(false) }
+    var selectedMcer by remember { mutableStateOf(TopicEcosystemStore.DEFAULT_MCER) }
+    var selectedPersonality by remember { mutableStateOf(TopicEcosystemStore.DEFAULT_PERSONALITY) }
+    var selectedPedagogicalMode by remember { mutableStateOf<String>(TopicEcosystemStore.DEFAULT_PEDAGOGICAL_MODE) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(28.dp), color = MuralColors.Surface) {
+            LazyColumn(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                item {
+                    PageHeading(
+                        stringResource(R.string.topics_create_dialog_eyebrow),
+                        stringResource(R.string.topics_create_dialog_title),
+                        stringResource(R.string.topics_create_dialog_subtitle)
+                    )
+                }
+
+                if (generatedDraft == null) {
+                    item {
+                        MuralTextField(
+                            query,
+                            { query = it.take(200) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.topics_create_placeholder)) },
+                            minLines = 3,
+                            maxLines = 5,
+                        )
+                    }
+                    item {
+                        Button(
+                            onClick = {
+                                vm.createCustomTheme(query) { draft ->
+                                    generatedDraft = draft
+                                    selectedMcer = draft.mcerLevel
+                                    selectedPersonality = draft.personality
+                                    selectedPedagogicalMode = vm.getThemePedagogicalMode(draft.theme.id)
+                                    isFav = vm.isThemeFavorite(draft.theme.id)
+                                }
+                            },
+                            enabled = query.isNotBlank() && !vm.working,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Orange, contentColor = MuralColors.Ink)
+                        ) {
+                            if (vm.working) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MuralColors.Ink)
+                                Text("  " + stringResource(R.string.topics_creating_button))
+                            } else {
+                                Text(stringResource(R.string.topics_create_button), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                } else {
+                    val draft = generatedDraft!!
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MuralColors.Sage.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(draft.theme.title, style = MaterialTheme.typography.titleLarge)
+                                        Text(stringResource(R.string.topics_generated_eyebrow), style = MaterialTheme.typography.labelSmall, color = MuralColors.Secondary)
+                                    }
+                                    Box(
+                                        Modifier.size(40.dp).clip(CircleShape).background(MuralColors.Surface.copy(alpha = 0.8f))
+                                            .clickable(role = Role.Button) {
+                                                isFav = vm.toggleFavoriteTheme(draft.theme.id)
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        MuralIcon(
+                                            MuralSymbol.Heart,
+                                            Modifier.size(24.dp),
+                                            color = if (isFav) MuralColors.Orange else MuralColors.Secondary.copy(alpha = 0.5f),
+                                            filled = isFav,
+                                            description = stringResource(R.string.topics_favorite_toggle)
+                                        )
+                                    }
+                                }
+                                Text(draft.theme.situation, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(stringResource(R.string.theme_mcer_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(TopicEcosystemStore.MCER_LEVELS) { level ->
+                                    FilterChip(
+                                        selected = selectedMcer == level,
+                                        onClick = {
+                                            selectedMcer = level
+                                            vm.setThemeMcerLevel(draft.theme.id, level)
+                                        },
+                                        label = { Text(level, fontWeight = if (selectedMcer == level) FontWeight.Bold else FontWeight.Normal) },
+                                        shape = CircleShape,
+                                        border = null,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                            selectedContainerColor = MuralColors.Orange,
+                                            selectedLabelColor = MuralColors.Ink
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(stringResource(R.string.theme_personality_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                            val personalities = listOf(
+                                TopicEcosystemStore.PERSONALITY_FRIENDLY to R.string.theme_personality_friendly,
+                                TopicEcosystemStore.PERSONALITY_PROFESSIONAL to R.string.theme_personality_professional,
+                                TopicEcosystemStore.PERSONALITY_CASUAL to R.string.theme_personality_casual,
+                                TopicEcosystemStore.PERSONALITY_BUSY to R.string.theme_personality_busy
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(personalities) { (id, resId) ->
+                                    FilterChip(
+                                        selected = selectedPersonality == id,
+                                        onClick = {
+                                            selectedPersonality = id
+                                            vm.setThemePersonality(draft.theme.id, id)
+                                        },
+                                        label = { Text(stringResource(resId)) },
+                                        shape = CircleShape,
+                                        border = null,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                            selectedContainerColor = MuralColors.Peach,
+                                            selectedLabelColor = MuralColors.Ink
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(stringResource(R.string.theme_pedagogical_mode_label), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                            val modes = listOf(
+                                TopicEcosystemStore.MODE_EDUCATION to R.string.theme_mode_education,
+                                TopicEcosystemStore.MODE_CONVERSATION to R.string.theme_mode_conversation
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(modes) { (id, resId) ->
+                                    FilterChip(
+                                        selected = selectedPedagogicalMode == id,
+                                        onClick = {
+                                            selectedPedagogicalMode = id
+                                            vm.setThemePedagogicalMode(draft.theme.id, id)
+                                        },
+                                        label = { Text(stringResource(resId)) },
+                                        shape = CircleShape,
+                                        border = null,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = MuralColors.Surface.copy(alpha = .70f),
+                                            selectedContainerColor = MuralColors.Butter,
+                                            selectedLabelColor = MuralColors.Ink
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    vm.saveCustomTheme(draft.theme)
+                                    onStartVoice(draft.theme)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Orange, contentColor = MuralColors.Ink)
+                            ) {
+                                MuralIcon(MuralSymbol.Mic, modifier = Modifier.size(18.dp), color = MuralColors.Ink)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.theme_start_voice), fontWeight = FontWeight.SemiBold)
+                            }
+                            Button(
+                                onClick = {
+                                    vm.saveCustomTheme(draft.theme)
+                                    onStartWritten(draft.theme)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Sage.copy(alpha = 0.5f), contentColor = MuralColors.Ink)
+                            ) {
+                                MuralIcon(MuralSymbol.Keyboard, modifier = Modifier.size(18.dp), color = MuralColors.Ink)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.theme_start_written), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    item {
+                        Button(
+                            onClick = {
+                                vm.saveCustomTheme(draft.theme)
+                                onDismiss()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MuralColors.Surface.copy(alpha = .85f), contentColor = MuralColors.Ink)
+                        ) {
+                            Text(stringResource(R.string.topics_save_only))
+                        }
+                    }
+                }
+
+                item {
+                    MuralTextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                }
             }
         }
     }
@@ -204,7 +666,7 @@ fun WordsScreen(vm: MuralViewModel) {
         Modifier.fillMaxSize().testTag("words-screen").padding(horizontal = 22.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(bottom = 120.dp),
     ) {
-        item { PageHeading(stringResource(R.string.words_eyebrow, vm.language.name), stringResource(R.string.words_title), stringResource(R.string.words_subtitle), Modifier.padding(top = 20.dp)) }
+        item { PageHeading(stringResource(R.string.words_eyebrow, vm.language.localizedDisplayName(vm.appLanguage)), stringResource(R.string.words_title), stringResource(R.string.words_subtitle), Modifier.padding(top = 20.dp)) }
         item {
             MuralSearchField(search, { search = it.take(80) }, stringResource(R.string.words_search_placeholder))
         }
@@ -283,10 +745,12 @@ internal fun formatDate(secondsSince2001: Double): String = runCatching {
 @Composable
 private fun categoryLabel(value: String) = when (value) {
     "All" -> stringResource(R.string.topics_category_all)
+    "Favorites" -> stringResource(R.string.topics_favorites_filter)
     "Everyday" -> stringResource(R.string.topics_category_everyday)
     "Connection" -> stringResource(R.string.topics_category_connection)
     "Local life" -> stringResource(R.string.topics_category_local_life)
     "Interests" -> stringResource(R.string.topics_category_interests)
+    "Custom", "Personalizados" -> stringResource(R.string.topics_category_custom)
     else -> value
 }
 

@@ -20,8 +20,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,8 +54,14 @@ import chat.mural.core.CloudAction
 import chat.mural.AccountViewModel
 import chat.mural.MinutePurchaseViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import android.content.res.Configuration
+import java.util.Locale
+import chat.mural.core.AppLanguages
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MuralApp(
     vm: MuralViewModel,
@@ -76,10 +85,23 @@ fun MuralApp(
     var showAccount by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showMinutes by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = tab != 0 && !showSettings && !showAccount && !showMinutes) { tab = 0 }
+    var inTestSession by rememberSaveable { mutableStateOf(false) }
+    var inFlashcards by rememberSaveable { mutableStateOf(false) }
+    var currentAttempt by remember { mutableStateOf<chat.mural.core.TestUserAttempt?>(null) }
+    var pendingCustomAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val isInActiveTestFlow = tab == 2 && (inTestSession || inFlashcards || currentAttempt != null)
+    BackHandler(enabled = isInActiveTestFlow) {
+        inTestSession = false
+        inFlashcards = false
+        currentAttempt = null
+    }
+    BackHandler(enabled = !isInActiveTestFlow && tab != 0 && !showSettings && !showAccount && !showMinutes) { tab = 0 }
+
     fun perform(action: CloudAction) {
         when (action) {
             CloudAction.StartVoice -> if (!vm.needsMinuteAccess()) onRequestMicrophone()
+            CloudAction.StartWritten -> vm.startWritten()
             is CloudAction.SendTyped -> vm.sendTyped(action.text)
             is CloudAction.Lookup -> vm.lookup(action.word, action.sentence)
             is CloudAction.CurrentTopic -> vm.currentTopic(action.query)
@@ -93,30 +115,43 @@ fun MuralApp(
             showConsent = true
         }
     }
+    fun executeWithConsent(action: () -> Unit) {
+        if (vm.archive.preferences.aiConsentVersion == AI_CONSENT_VERSION) action()
+        else {
+            pendingCustomAction = action
+            showConsent = true
+        }
+    }
 
-    MuralTheme {
-        Surface(Modifier.fillMaxSize(), color = MuralColors.Cream) {
-            if (vm.loadingHistory) {
-                Box(Modifier.fillMaxSize().testTag("history-loading"), contentAlignment = Alignment.Center) {
-                    SoftAnimatedBackground(Modifier.fillMaxSize())
-                    MuralOrb(modifier = Modifier.size(150.dp))
-                }
-            } else if (!prefs.hasOnboarded) {
-                OnboardingScreen(prefs.learningLanguageID, prefs.meaningLanguage) { language, meaning ->
-                    vm.selectLanguage(language)
-                    vm.updatePreferences(
-                        vm.archive.preferences.copy(
-                            learningLanguageID = language,
-                            meaningLanguage = meaning,
-                            meaningVisible = true,
-                            hasOnboarded = true,
-                            aiConsentVersion = null,
-                        ),
-                    )
-                    vm.pendingCloudAction = null
-                    showConsent = true
-                }
-            } else {
+    ProvideAppLocale(vm.appLanguage) {
+        MuralTheme(darkTheme = vm.darkTheme) {
+            Surface(Modifier.fillMaxSize(), color = MuralColors.Cream) {
+                if (vm.loadingHistory) {
+                    Box(Modifier.fillMaxSize().testTag("history-loading"), contentAlignment = Alignment.Center) {
+                        SoftAnimatedBackground(Modifier.fillMaxSize())
+                        MuralOrb(modifier = Modifier.size(150.dp))
+                    }
+                } else if (!prefs.hasOnboarded) {
+                    OnboardingScreen(
+                        initialLanguageId = prefs.learningLanguageID,
+                        initialMeaningLanguage = prefs.meaningLanguage,
+                        appLanguage = vm.appLanguage,
+                        onSelectAppLanguage = vm::selectAppLanguage
+                    ) { language, meaning ->
+                        vm.selectLanguage(language)
+                        vm.updatePreferences(
+                            vm.archive.preferences.copy(
+                                learningLanguageID = language,
+                                meaningLanguage = meaning,
+                                meaningVisible = true,
+                                hasOnboarded = true,
+                                aiConsentVersion = null,
+                            ),
+                        )
+                        vm.pendingCloudAction = null
+                        showConsent = true
+                    }
+                } else {
                 Scaffold(
                     containerColor = MuralColors.Cream,
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -132,30 +167,113 @@ fun MuralApp(
                         }
                     },
                 ) { padding ->
-                    Box(Modifier.fillMaxSize().padding(padding)) {
-                    Column(Modifier.fillMaxSize().then(if (tab == 0) Modifier.padding(bottom =
-                        90.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()) else Modifier)) {
-                        when (tab) {
-                            0 -> TalkScreen(
-                                vm = vm,
-                                microphoneMessage = microphoneMessage,
-                                onMicrophone = { withConsent(CloudAction.StartVoice) },
-                                onOpenAppSettings = onOpenAppSettings,
-                                onSendTyped = { text -> withConsent(CloudAction.SendTyped(text)) },
-                                onLookup = { word, sentence -> withConsent(CloudAction.Lookup(word, sentence)) },
-                                onHelp = { withConsent(CloudAction.Help) },
+                    val isKeyboardOpen = WindowInsets.isImeVisible
+                    val navBottomPadding = if (isKeyboardOpen) 0.dp else (
+                        90.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                    )
+                    Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                        Column(
+                            Modifier.fillMaxSize().then(
+                                if (tab == 0) Modifier.padding(bottom = navBottomPadding) else Modifier
                             )
-                            1 -> TopicsScreen(
-                                vm,
-                                onChoose = { tab = 0 },
-                                onCurrentTopic = { query -> withConsent(CloudAction.CurrentTopic(query)) },
-                            )
-                            2 -> WordsScreen(vm)
+                        ) {
+                            when (tab) {
+                                0 -> TalkScreen(
+                                    vm = vm,
+                                    microphoneMessage = microphoneMessage,
+                                    onMicrophone = { withConsent(CloudAction.StartVoice) },
+                                    onOpenAppSettings = onOpenAppSettings,
+                                    onSendTyped = { text -> withConsent(CloudAction.SendTyped(text)) },
+                                    onLookup = { word, sentence -> withConsent(CloudAction.Lookup(word, sentence)) },
+                                    onHelp = { withConsent(CloudAction.Help) },
+                                )
+                                1 -> TopicsScreen(
+                                    vm,
+                                    onChoose = { tab = 0 },
+                                    onCurrentTopic = { query -> withConsent(CloudAction.CurrentTopic(query)) },
+                                )
+                                2 -> {
+                                    val activeTest = vm.activeTest
+                                    val activeFlashcards = vm.activeFlashcards
+
+                                    when {
+                                        inTestSession && activeTest != null -> {
+                                            TestSessionScreen(
+                                                test = activeTest,
+                                                onTranslatePrompt = { prompt -> vm.translatePromptOnly(prompt, activeTest.languageID) },
+                                                onFinish = { attempt ->
+                                                    vm.saveTestAttempt(attempt)
+                                                    currentAttempt = attempt
+                                                    inTestSession = false
+                                                },
+                                                onClose = { inTestSession = false }
+                                            )
+                                        }
+                                        inFlashcards && !activeFlashcards.isNullOrEmpty() -> {
+                                            FlashcardsScreen(
+                                                test = activeTest,
+                                                flashcards = activeFlashcards,
+                                                onFinish = { attempt ->
+                                                    vm.saveTestAttempt(attempt)
+                                                },
+                                                onClose = { inFlashcards = false }
+                                            )
+                                        }
+                                        currentAttempt != null && activeTest != null -> {
+                                            TestSummaryScreen(
+                                                test = activeTest,
+                                                attempt = currentAttempt!!,
+                                                onRetry = {
+                                                    currentAttempt = null
+                                                    if (activeTest.items.isEmpty() && activeTest.flashcards.isNotEmpty()) {
+                                                        vm.selectActiveFlashcards(activeTest.flashcards)
+                                                        inFlashcards = true
+                                                    } else {
+                                                        inTestSession = true
+                                                    }
+                                                },
+                                                onBackToCatalog = {
+                                                    currentAttempt = null
+                                                },
+                                                onDeleteTest = {
+                                                    vm.deleteLearningTest(activeTest.id)
+                                                    currentAttempt = null
+                                                }
+                                            )
+                                        }
+                                        else -> {
+                                            TestsScreen(
+                                                vm = vm,
+                                                executeWithConsent = { executeWithConsent(it) },
+                                                onStartTest = { test ->
+                                                    vm.selectActiveTest(test)
+                                                    currentAttempt = null
+                                                    inTestSession = true
+                                                },
+                                                onStartFlashcards = { cards ->
+                                                    vm.selectActiveFlashcards(cards)
+                                                    inFlashcards = true
+                                                },
+                                                onReviewAttempt = { test, attempt ->
+                                                    vm.selectActiveTest(test)
+                                                    currentAttempt = attempt
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                                3 -> WordsScreen(vm)
+                            }
                         }
-                    }
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(108.dp)
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, MuralColors.Cream.copy(alpha = .92f)))))
-                    Box(Modifier.align(Alignment.BottomCenter)) { FloatingNavigation(tab) { tab = it } }
+                        if (!isKeyboardOpen && !isInActiveTestFlow) {
+                            Box(
+                                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(108.dp)
+                                    .background(Brush.verticalGradient(listOf(Color.Transparent, MuralColors.Cream.copy(alpha = .92f))))
+                            )
+                            Box(Modifier.align(Alignment.BottomCenter)) {
+                                FloatingNavigation(tab) { tab = it }
+                            }
+                        }
                     }
                 }
             }
@@ -163,12 +281,14 @@ fun MuralApp(
             if (showSettings) {
                 ModalBottomSheet(onDismissRequest = { showSettings = false }, containerColor = MuralColors.Cream,
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                    Column(Modifier.fillMaxHeight(.94f)) {
-                        SettingsScreen(vm, onExport, onImport, onReviewConsent = {
-                            vm.pendingCloudAction = null; showConsent = true
-                        }, onAccount = if (account?.configuration != null) ({
-                            account.refresh(); showAccount = true
-                        }) else null, onDismiss = { showSettings = false })
+                    ProvideAppLocale(vm.appLanguage) {
+                        Column(Modifier.fillMaxHeight(.94f)) {
+                            SettingsScreen(vm, onExport, onImport, onReviewConsent = {
+                                vm.pendingCloudAction = null; pendingCustomAction = null; showConsent = true
+                            }, onAccount = if (account?.configuration != null) ({
+                                account.refresh(); showAccount = true
+                            }) else null, onDismiss = { showSettings = false })
+                        }
                     }
                 }
             }
@@ -180,12 +300,34 @@ fun MuralApp(
                     val action = vm.pendingCloudAction
                     vm.pendingCloudAction = null
                     action?.let(::perform)
+                    val custom = pendingCustomAction
+                    pendingCustomAction = null
+                    custom?.invoke()
                 },
                 onDecline = {
                     showConsent = false
                     vm.pendingCloudAction = null
+                    pendingCustomAction = null
                 },
             )
+
+            if (vm.showGuardrailDialog) {
+                GuardrailDialog(
+                    onGenerate = {
+                        executeWithConsent {
+                            vm.confirmGuardrailGenerate {
+                                tab = 2
+                            }
+                        }
+                    },
+                    onFinishWithoutTesting = {
+                        vm.confirmGuardrailFinish()
+                    },
+                    onStayInConversation = {
+                        vm.dismissGuardrail()
+                    }
+                )
+            }
 
             if (vm.showMinuteAccess && !showAccount && !showSettings && !showMinutes) {
                 val memberState = account?.state?.collectAsStateWithLifecycle()?.value
@@ -249,4 +391,43 @@ fun MuralApp(
             }
         }
     }
+    }
 }
+
+@Composable
+fun ProvideAppLocale(
+    languageId: String,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+    val appLang = AppLanguages.get(languageId)
+    val locale = remember(appLang.localeTag) {
+        Locale.forLanguageTag(appLang.localeTag)
+    }
+
+    val localizedConfig = remember(locale, context) {
+        Locale.setDefault(locale)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            android.os.LocaleList.setDefault(android.os.LocaleList(locale))
+        }
+        val res = context.resources
+        Configuration(res.configuration).apply {
+            setLocale(locale)
+            setLayoutDirection(locale)
+            @Suppress("DEPRECATION")
+            res.updateConfiguration(this, res.displayMetrics)
+        }
+    }
+
+    val localizedContext = remember(context, locale, localizedConfig) {
+        context.createConfigurationContext(localizedConfig)
+    }
+
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedConfig
+    ) {
+        content()
+    }
+}
+

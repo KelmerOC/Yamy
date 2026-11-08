@@ -92,15 +92,92 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
             item {
                 SettingsGroup(stringResource(R.string.settings_just_your_pace),
                     stringResource(if (vm.isRunning) R.string.settings_language_running_footer else R.string.settings_language_footer)) {
-                    SettingsChoiceRow(stringResource(R.string.settings_learning_language), vm.language.settingsTitle, vm.language.id,
-                        LanguageRegistry.all.map { it.id to it.settingsTitle }, "settings-learning-language", !vm.isRunning, vm::selectLanguage)
+                    val appLangOptions = chat.mural.core.AppLanguages.all.map { it.id to it.localizedOptionTitle(vm.appLanguage) }
+                    val currentAppLangLabel = chat.mural.core.AppLanguages.get(vm.appLanguage).localizedOptionTitle(vm.appLanguage)
+                    SettingsChoiceRow(
+                        stringResource(R.string.settings_app_language_title),
+                        currentAppLangLabel,
+                        vm.appLanguage,
+                        appLangOptions,
+                        "settings-app-language",
+                        true,
+                        vm::selectAppLanguage
+                    )
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        stringResource(R.string.settings_learning_language),
+                        vm.language.localizedOptionTitle(vm.appLanguage),
+                        vm.language.id,
+                        LanguageRegistry.supported.map { it.id to it.localizedOptionTitle(vm.appLanguage) },
+                        "settings-learning-language",
+                        !vm.isRunning,
+                        vm::selectLanguage
+                    )
                     SettingsDivider()
                     SettingsMeaningSwitch(prefs.meaningVisible, vm::toggleMeaning)
                     SettingsDivider()
-                    SettingsChoiceRow(stringResource(R.string.settings_meaning_language), prefs.meaningLanguage, prefs.meaningLanguage,
-                        MeaningLanguages.all.map { it to it }, "settings-meaning-language", !vm.isRunning) {
+                    SettingsChoiceRow(
+                        stringResource(R.string.settings_meaning_language),
+                        MeaningLanguages.localizedLabel(prefs.meaningLanguage, vm.appLanguage),
+                        prefs.meaningLanguage,
+                        MeaningLanguages.all.map { it to MeaningLanguages.localizedLabel(it, vm.appLanguage) },
+                        "settings-meaning-language",
+                        !vm.isRunning
+                    ) {
                         vm.updatePreferences(prefs.copy(meaningLanguage = it))
                     }
+                    SettingsDivider()
+                    val speedOptions = listOf(
+                        chat.mural.core.VoiceSettingsStore.SPEED_BEGINNER to stringResource(R.string.settings_voice_speed_beginner),
+                        chat.mural.core.VoiceSettingsStore.SPEED_NORMAL to stringResource(R.string.settings_voice_speed_normal),
+                        chat.mural.core.VoiceSettingsStore.SPEED_ADVANCED to stringResource(R.string.settings_voice_speed_advanced),
+                    )
+                    val currentSpeedLabel = speedOptions.firstOrNull { it.first == vm.voiceSpeed }?.second
+                        ?: stringResource(R.string.settings_voice_speed_normal)
+                    SettingsChoiceRow(
+                        stringResource(R.string.settings_voice_speed_title),
+                        currentSpeedLabel,
+                        vm.voiceSpeed,
+                        speedOptions,
+                        "settings-voice-speed",
+                        true,
+                        vm::selectVoiceSpeed
+                    )
+                    SettingsDivider()
+                    val voiceTimbreOptions = listOf(
+                        chat.mural.core.VoiceSettingsStore.VOICE_AOEDE to stringResource(R.string.settings_voice_timbre_aoede),
+                        chat.mural.core.VoiceSettingsStore.VOICE_KORE to stringResource(R.string.settings_voice_timbre_kore),
+                        chat.mural.core.VoiceSettingsStore.VOICE_PUCK to stringResource(R.string.settings_voice_timbre_puck),
+                        chat.mural.core.VoiceSettingsStore.VOICE_FENRIR to stringResource(R.string.settings_voice_timbre_fenrir),
+                        chat.mural.core.VoiceSettingsStore.VOICE_CHARON to stringResource(R.string.settings_voice_timbre_charon),
+                    )
+                    val currentTimbreLabel = voiceTimbreOptions.firstOrNull { it.first == vm.voiceTimbre }?.second
+                        ?: stringResource(R.string.settings_voice_timbre_puck)
+                    SettingsChoiceRow(
+                        stringResource(R.string.settings_voice_timbre_title),
+                        currentTimbreLabel,
+                        vm.voiceTimbre,
+                        voiceTimbreOptions,
+                        "settings-voice-timbre",
+                        !vm.isRunning,
+                        vm::selectVoiceTimbre
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_clean_voice_title),
+                        subtitle = stringResource(R.string.settings_clean_voice_summary),
+                        checked = vm.cleanVoiceMode,
+                        tag = "settings-clean-voice",
+                        onChange = vm::toggleCleanVoice
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_dark_theme_title),
+                        subtitle = stringResource(R.string.settings_dark_theme_summary),
+                        checked = vm.darkTheme,
+                        tag = "settings-dark-theme",
+                        onChange = { vm.updateDarkTheme(!vm.darkTheme) }
+                    )
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_corrections_label), stringResource(R.string.settings_corrections_value))
                     SettingsDivider()
@@ -134,14 +211,15 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                             SettingsRow(stringResource(if (vm.hasKey) R.string.settings_replace_key else R.string.settings_save_key),
                                 enabled = !vm.isRunning, tint = MuralColors.Secondary, chevron = true, onClick = { keyDialog = true })
                             SettingsDivider()
-                            SettingsRow(stringResource(R.string.settings_open_api_keys), tint = MuralColors.Secondary,
-                                onClick = { open("https://platform.openai.com/api-keys") })
+                            val isGemini = !vm.hasKey || vm.credentialProvider == chat.mural.network.CredentialStore.ProviderType.GEMINI
+                            SettingsRow(stringResource(if (isGemini) R.string.settings_open_api_keys_gemini else R.string.settings_open_api_keys), tint = MuralColors.Secondary,
+                                onClick = { open(if (isGemini) "https://aistudio.google.com/app/apikey" else "https://platform.openai.com/api-keys") })
                             if (vm.hasKey) {
                                 SettingsDivider()
                                 SettingsRow(stringResource(R.string.settings_remove_key), enabled = !vm.isRunning,
                                     tint = MuralColors.Red, onClick = { deleteKey = true })
                             }
-                            Text(stringResource(R.string.settings_key_owner_footer), style = MaterialTheme.typography.bodySmall,
+                            Text(stringResource(if (isGemini) R.string.settings_key_owner_footer_gemini else R.string.settings_key_owner_footer), style = MaterialTheme.typography.bodySmall,
                                 color = MuralColors.Secondary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp))
                         }
                     }
@@ -161,8 +239,9 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                     SettingsDivider()
                     SettingsRow(stringResource(R.string.settings_search_calls_label), usage.searchCalls.toString())
                     SettingsDivider()
+                    val isGemini = !vm.hasKey || vm.credentialProvider == chat.mural.network.CredentialStore.ProviderType.GEMINI
                     SettingsRow(stringResource(R.string.settings_usage_billing_link), tint = MuralColors.Secondary,
-                        onClick = { open("https://platform.openai.com/usage") })
+                        onClick = { open(if (isGemini) "https://aistudio.google.com/" else "https://platform.openai.com/usage") })
                 }
             }
             item {
@@ -197,13 +276,19 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
             }
             item {
                 SettingsGroup {
+                    val isGemini = !vm.hasKey || vm.credentialProvider == chat.mural.network.CredentialStore.ProviderType.GEMINI
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.settings_app_version_footer, version), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
-                        Text(stringResource(R.string.settings_models_footer), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                        Text(stringResource(if (isGemini) R.string.settings_models_footer_gemini else R.string.settings_models_footer), style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
                     }
                     SettingsDivider()
-                    SettingsRow(stringResource(R.string.settings_openai_data_controls), tint = MuralColors.Secondary,
-                        onClick = { open("https://developers.openai.com/api/docs/guides/your-data") })
+                    if (isGemini) {
+                        SettingsRow(stringResource(R.string.settings_gemini_data_controls), tint = MuralColors.Secondary,
+                            onClick = { open("https://ai.google.dev/gemini-api/terms") })
+                    } else {
+                        SettingsRow(stringResource(R.string.settings_openai_data_controls), tint = MuralColors.Secondary,
+                            onClick = { open("https://developers.openai.com/api/docs/guides/your-data") })
+                    }
                     Text(stringResource(R.string.settings_data_use_footer), style = MaterialTheme.typography.bodySmall,
                         color = MuralColors.Secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     SettingsDivider()
@@ -251,23 +336,25 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
 private fun SettingsHistorySheet(vm: MuralViewModel, onDismiss: () -> Unit, onSelect: (SessionRecord) -> Unit, onDelete: (SessionRecord) -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MuralColors.Cream,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxHeight(.9f)) {
-            SettingsSheetHeader(stringResource(R.string.history_section_title), onDismiss)
-            LazyColumn(Modifier.weight(1f).testTag("settings-history-list"), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (vm.archive.sessions.isEmpty()) item {
-                    Text(stringResource(R.string.history_empty), style = MaterialTheme.typography.bodyLarge, color = MuralColors.Secondary,
-                        modifier = Modifier.padding(16.dp))
-                }
-                items(vm.archive.sessions.sortedByDescending { it.startedAt }, key = { it.id }) { session ->
-                    SettingsGroup {
-                        Column(Modifier.fillMaxWidth().clickable { onSelect(session) }.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(session.title, style = MaterialTheme.typography.titleMedium)
-                            Text("${LanguageRegistry.get(session.languageID)?.name ?: session.languageID} · ${formatDate(session.startedAt)}",
-                                color = MuralColors.Secondary, style = MaterialTheme.typography.bodySmall)
+        ProvideAppLocale(vm.appLanguage) {
+            Column(Modifier.fillMaxHeight(.9f)) {
+                SettingsSheetHeader(stringResource(R.string.history_section_title), onDismiss)
+                LazyColumn(Modifier.weight(1f).testTag("settings-history-list"), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (vm.archive.sessions.isEmpty()) item {
+                        Text(stringResource(R.string.history_empty), style = MaterialTheme.typography.bodyLarge, color = MuralColors.Secondary,
+                            modifier = Modifier.padding(16.dp))
+                    }
+                    items(vm.archive.sessions.sortedByDescending { it.startedAt }, key = { it.id }) { session ->
+                        SettingsGroup {
+                            Column(Modifier.fillMaxWidth().clickable { onSelect(session) }.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text(session.title, style = MaterialTheme.typography.titleMedium)
+                                Text("${LanguageRegistry.get(session.languageID)?.localizedDisplayName(vm.appLanguage) ?: session.languageID} · ${formatDate(session.startedAt)}",
+                                    color = MuralColors.Secondary, style = MaterialTheme.typography.bodySmall)
+                            }
+                            SettingsDivider()
+                            SettingsRow(stringResource(R.string.common_delete), enabled = !vm.isRunning, tint = MuralColors.Red, onClick = { onDelete(session) })
                         }
-                        SettingsDivider()
-                        SettingsRow(stringResource(R.string.common_delete), enabled = !vm.isRunning, tint = MuralColors.Red, onClick = { onDelete(session) })
                     }
                 }
             }

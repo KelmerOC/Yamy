@@ -44,6 +44,68 @@ internal fun decodeTeachingResponse(response: JsonObject): APIResult {
     )
 }
 
+/** Decodes Gemini generateContent output and extracts safe citations from grounding metadata. */
+internal fun decodeGeminiTeachingResponse(response: JsonObject): APIResult {
+    val candidates = response.array("candidates")
+    if (candidates.isEmpty()) throw APIClient.APIException.Incomplete
+
+    val candidate = candidates.firstOrNull() as? JsonObject ?: throw APIClient.APIException.Incomplete
+    val finishReason = candidate.string("finishReason")
+    if (finishReason in listOf("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII")) {
+        throw APIClient.APIException.Refused
+    }
+
+    val content = candidate["content"] as? JsonObject ?: throw APIClient.APIException.Incomplete
+    val text = StringBuilder()
+    for (part in content.array("parts")) {
+        val partObj = part as? JsonObject ?: continue
+        val isThought = (partObj["thought"] as? JsonPrimitive)?.booleanOrNull == true
+        if (isThought) continue
+        text.append(partObj.string("text").orEmpty())
+    }
+
+    if (text.isEmpty()) {
+        for (part in content.array("parts")) {
+            val partObj = part as? JsonObject ?: continue
+            text.append(partObj.string("text").orEmpty())
+        }
+    }
+
+    if (text.isEmpty()) throw APIClient.APIException.Incomplete
+
+    val sources = linkedMapOf<String, SourceLink>()
+    var searches = 0
+    val groundingMetadata = candidate["groundingMetadata"] as? JsonObject
+    if (groundingMetadata != null) {
+        val searchQueries = groundingMetadata.array("webSearchQueries")
+        searches = searchQueries.size.coerceAtLeast(0)
+
+        for (chunkElement in groundingMetadata.array("groundingChunks")) {
+            val chunk = chunkElement as? JsonObject ?: continue
+            val web = chunk["web"] as? JsonObject ?: continue
+            val url = web.string("uri") ?: continue
+            if (isSafeSourceUrl(url)) {
+                val title = web.string("title")?.takeIf { it.isNotBlank() } ?: "Source"
+                sources.putIfAbsent(url, SourceLink(title, url))
+            }
+        }
+    }
+
+    val usageMetadata = response["usageMetadata"] as? JsonObject
+    val inputTokens = ((usageMetadata?.get("promptTokenCount") as? JsonPrimitive)?.intOrNull ?: 0).coerceIn(0, 1_000_000_000)
+    val outputTokens = ((usageMetadata?.get("candidatesTokenCount") as? JsonPrimitive)?.intOrNull ?: 0).coerceIn(0, 1_000_000_000)
+
+    return APIResult(
+        text = text.toString(),
+        sources = sources.values.toList(),
+        usage = APIUsage(
+            input = inputTokens,
+            output = outputTokens,
+            searches = searches,
+        ),
+    )
+}
+
 private fun isSafeSourceUrl(value: String): Boolean = try {
     val uri = URI(value)
     uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null

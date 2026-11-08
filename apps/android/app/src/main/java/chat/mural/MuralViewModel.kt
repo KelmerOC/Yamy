@@ -83,7 +83,7 @@ internal fun requestErrorReference(error: Throwable): String? = safeRequestError
     else -> null
 })
 
-/** Whether the failure means the learner needs to add or fix their OpenAI key in Settings. */
+/** Whether the failure means the learner needs to add or fix their API key in Settings. */
 internal fun errorNeedsKeySetup(e: Throwable): Boolean =
     e is APIClient.APIException.MissingKey || (e is APIClient.APIException.Http && e.status == 401)
 
@@ -126,6 +126,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     private var lookupJob: Job? = null
     var topicResult by mutableStateOf<TopicBrief?>(null); private set
     var hasKey by mutableStateOf(false); private set
+    var credentialProvider by mutableStateOf<CredentialStore.ProviderType?>(null); private set
     val language get() = LanguageRegistry.get(archive.preferences.learningLanguageID)!!
     val learner get() = LearningEngine.project(archive.sessions, language.id, archive.preferences.hiddenWords)
     val isRunning get() = state in listOf("connecting", "active", "closing")
@@ -137,6 +138,9 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     private val api = APIClient(credentials)
     private val transport = LiveTransport(application, viewModelScope)
     private val providerStore = ConversationProviderStore(application)
+    private val voiceSettingsStore = VoiceSettingsStore(application)
+    private val topicEcosystemStore = TopicEcosystemStore(application)
+    private val learningTestStore = LearningTestStore(application)
     private val hostedConfiguration = HostedConfiguration.parse(BuildConfig.MANAGED_API_ORIGIN)
     private val accountConfiguration = ManagedAccountConfiguration.parse(BuildConfig.MANAGED_API_ORIGIN, BuildConfig.GOOGLE_SERVER_CLIENT_ID)
     private val memberSessions = accountConfiguration?.let { AccountSessionStore(application, it.origin.toString()) }
@@ -174,6 +178,651 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             HostedReadiness(owner.accountID, balance?.readinessMilliseconds ?: 0, enabled)
         }, changed = { hostedReadiness = it })
     var accountChangeBlocked by mutableStateOf(true); private set
+    var voiceSpeed by mutableStateOf(voiceSettingsStore.voiceSpeed); private set
+    var cleanVoiceMode by mutableStateOf(voiceSettingsStore.cleanVoiceMode); private set
+    var voiceTimbre by mutableStateOf(voiceSettingsStore.voiceTimbre); private set
+    var appLanguage by mutableStateOf(voiceSettingsStore.appLanguage); private set
+    var darkTheme by mutableStateOf(voiceSettingsStore.darkTheme); private set
+    var favoriteThemeIDs by mutableStateOf(topicEcosystemStore.favoriteThemeIDs); private set
+    var currentPedagogicalMode by mutableStateOf(topicEcosystemStore.getPedagogicalMode(selectedTheme?.id)); private set
+    var currentMcerLevel by mutableStateOf(topicEcosystemStore.getMcerLevel(selectedTheme?.id)); private set
+
+    var learningTests by mutableStateOf<List<LearningTest>>(emptyList()); private set
+    var activeTest by mutableStateOf<LearningTest?>(null); private set
+    var activeFlashcards by mutableStateOf<List<FlashcardItem>?>(null); private set
+    var generatingTestIds by mutableStateOf<Set<String>>(emptySet()); private set
+    val testGenerating: Boolean get() = generatingTestIds.isNotEmpty()
+    var attemptSummaries by mutableStateOf<Map<String, AttemptSummary>>(emptyMap()); private set
+    var activityDaysThisWeek by mutableStateOf(0); private set
+    var showGuardrailDialog by mutableStateOf(false); private set
+    var guardrailPendingAction by mutableStateOf<(() -> Unit)?>(null); private set
+
+    fun selectAppLanguage(languageID: String) {
+        val validated = AppLanguages.get(languageID).id
+        voiceSettingsStore.appLanguage = validated
+        appLanguage = validated
+    }
+
+    fun selectVoiceSpeed(speed: String) {
+        voiceSettingsStore.voiceSpeed = speed
+        voiceSpeed = speed
+        if (state == "active" && voiceSession) {
+            command("instructions", TeachingPolicy.voiceCadenceGuidance(speed))
+        }
+    }
+
+    fun selectVoiceTimbre(timbre: String) {
+        voiceSettingsStore.voiceTimbre = timbre
+        voiceTimbre = timbre
+    }
+
+    fun toggleCleanVoice() {
+        val next = !cleanVoiceMode
+        voiceSettingsStore.cleanVoiceMode = next
+        cleanVoiceMode = next
+    }
+
+    fun updateDarkTheme(enabled: Boolean) {
+        voiceSettingsStore.darkTheme = enabled
+        darkTheme = enabled
+    }
+
+    fun toggleFavoriteTheme(themeID: String): Boolean {
+        val isNowFav = topicEcosystemStore.toggleFavorite(themeID)
+        favoriteThemeIDs = topicEcosystemStore.favoriteThemeIDs
+        return isNowFav
+    }
+
+    fun isThemeFavorite(themeID: String): Boolean = favoriteThemeIDs.contains(themeID)
+
+    fun getThemeMcerLevel(themeID: String?): String = topicEcosystemStore.getMcerLevel(themeID)
+
+    fun setThemeMcerLevel(themeID: String?, level: String) {
+        val normalized = level.uppercase().trim().takeIf { it in TopicEcosystemStore.MCER_LEVELS } ?: TopicEcosystemStore.DEFAULT_MCER
+        topicEcosystemStore.setMcerLevel(themeID, normalized)
+        val isCurrentContext = themeID == null || themeID == "general" || selectedTheme?.id == themeID || (selectedTheme == null && themeID == "general")
+        if (isCurrentContext) {
+            currentMcerLevel = normalized
+        }
+        if (state == "active" && voiceSession && isCurrentContext) {
+            command("instructions", TeachingPolicy.mcerGuidance(normalized))
+        }
+    }
+
+    fun getThemePersonality(themeID: String): String = topicEcosystemStore.getPersonality(themeID)
+
+    fun setThemePersonality(themeID: String, personality: String) {
+        topicEcosystemStore.setPersonality(themeID, personality)
+        if (state == "active" && voiceSession && selectedTheme?.id == themeID) {
+            command("instructions", TeachingPolicy.personalityGuidance(personality))
+        }
+    }
+
+    fun getThemeMemory(themeID: String): String? = topicEcosystemStore.getThemeMemory(themeID)
+
+    fun setThemeMemory(themeID: String, memory: String) {
+        topicEcosystemStore.setThemeMemory(themeID, memory)
+    }
+
+    fun getThemePedagogicalMode(themeID: String?): String = topicEcosystemStore.getPedagogicalMode(themeID)
+
+    fun setThemePedagogicalMode(themeID: String?, mode: String) {
+        val normalized = mode.lowercase().trim().takeIf { it in TopicEcosystemStore.PEDAGOGICAL_MODES } ?: TopicEcosystemStore.DEFAULT_MODE
+        topicEcosystemStore.setPedagogicalMode(themeID, normalized)
+        val isCurrentContext = themeID == null || themeID == "general" || selectedTheme?.id == themeID || (selectedTheme == null && themeID == "general")
+        if (isCurrentContext) {
+            currentPedagogicalMode = normalized
+        }
+        if (state == "active" && voiceSession && isCurrentContext) {
+            command("instructions", TeachingPolicy.pedagogicalModeGuidance(normalized, language))
+        }
+    }
+
+    fun getSessionsForTheme(themeID: String): List<SessionRecord> {
+        return archive.sessions.filter { it.themeID == themeID }.sortedByDescending { it.startedAt }
+    }
+
+    data class GeneratedCustomTheme(
+        val theme: ConversationTheme,
+        val mcerLevel: String,
+        val personality: String,
+        val systemPromptRole: String
+    )
+
+    var customThemes by mutableStateOf<List<ConversationTheme>>(emptyList()); private set
+
+    val allThemes: List<ConversationTheme>
+        get() = (customThemes + language.themes.filterNot { it.id == "today" }).distinctBy { it.id }
+
+    fun refreshCustomThemes() {
+        customThemes = topicEcosystemStore.getCustomThemes(language.id)
+    }
+
+    fun saveCustomTheme(theme: ConversationTheme) {
+        topicEcosystemStore.saveCustomTheme(language.id, theme)
+        refreshCustomThemes()
+    }
+
+    fun createCustomTheme(prompt: String, onDone: ((GeneratedCustomTheme) -> Unit)? = null) {
+        if (prompt.isBlank() || working || !cloudReady()) return
+        val token = generation
+        val module = language
+        working = true
+        actionJob = viewModelScope.launch {
+            try {
+                val instructions = TeachingPolicy.createTheme(module)
+                val result = teaching(
+                    localID = session?.id,
+                    purpose = HelperPurpose.TOPIC,
+                    logicalID = UUID.randomUUID().toString(),
+                    instructions = instructions,
+                    input = prompt.trim().take(500),
+                    schema = null,
+                    search = false
+                )
+                if (token != generation) return@launch
+
+                val raw = result.text.trim()
+                val firstBrace = raw.indexOf('{')
+                val lastBrace = raw.lastIndexOf('}')
+                val clean = if (firstBrace in 0 until lastBrace) {
+                    raw.substring(firstBrace, lastBrace + 1)
+                } else if (raw.startsWith("```")) {
+                    raw.substringAfter("\n").substringBeforeLast("```").trim()
+                } else raw
+
+                val json = try {
+                    Json.parseToJsonElement(clean) as? JsonObject
+                } catch (_: Exception) {
+                    null
+                }
+
+                val title = (json?.get("title") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: prompt.take(24)
+                val situation = (json?.get("situation") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: prompt
+                val mcer = (json?.get("defaultMcerLevel") as? JsonPrimitive)?.contentOrNull?.uppercase()?.trim()
+                    ?.takeIf { it in TopicEcosystemStore.MCER_LEVELS } ?: TopicEcosystemStore.DEFAULT_MCER
+                val personality = (json?.get("tutorPersonality") as? JsonPrimitive)?.contentOrNull?.lowercase()?.trim()
+                    ?.takeIf { it in TopicEcosystemStore.PERSONALITIES } ?: TopicEcosystemStore.DEFAULT_PERSONALITY
+                val systemPromptRole = (json?.get("systemPromptRole") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: situation
+
+                val themeID = "custom_" + UUID.randomUUID().toString().take(8)
+                val theme = ConversationTheme(
+                    id = themeID,
+                    title = title,
+                    subtitle = situation.take(45),
+                    symbol = "sparkles",
+                    category = "Personalizados",
+                    situation = systemPromptRole,
+                    colorIndex = 1
+                )
+                topicEcosystemStore.setMcerLevel(themeID, mcer)
+                topicEcosystemStore.setPersonality(themeID, personality)
+
+                val draft = GeneratedCustomTheme(theme, mcer, personality, systemPromptRole)
+                onDone?.invoke(draft)
+            } catch (e: Exception) {
+                if (token == generation) presentError(e, R.string.error_find_topic_failed)
+            } finally {
+                if (token == generation) working = false
+            }
+        }
+    }
+
+    fun refreshLearningTests() {
+        learningTests = learningTestStore.getAllTests()
+        attemptSummaries = learningTestStore.getAttemptSummaries()
+        activityDaysThisWeek = learningTestStore.getActivityDaysThisWeek()
+    }
+
+    fun selectActiveTest(test: LearningTest?) {
+        activeTest = test
+        activeFlashcards = test?.flashcards
+    }
+
+    fun selectActiveFlashcards(cards: List<FlashcardItem>?) {
+        activeFlashcards = cards
+    }
+
+    fun deleteLearningTest(testId: String) {
+        learningTestStore.deleteTest(testId)
+        refreshLearningTests()
+        if (activeTest?.id == testId) {
+            activeTest = null
+        }
+    }
+
+    fun toggleTestFavorite(testId: String) {
+        val test = learningTests.find { it.id == testId } ?: return
+        learningTestStore.setFavorite(testId, !test.isFavorite)
+        refreshLearningTests()
+    }
+
+    fun saveTestAttempt(attempt: TestUserAttempt) {
+        learningTestStore.saveAttempt(attempt)
+        refreshLearningTests()
+    }
+
+    fun getLatestAttempt(testId: String): TestUserAttempt? {
+        return learningTestStore.getLatestAttempt(testId)
+    }
+
+    fun getAttemptSummary(testId: String): AttemptSummary? {
+        return attemptSummaries[testId] ?: learningTestStore.getAttemptSummary(testId)
+    }
+
+    fun requestEndSession(onDirectEnd: (() -> Unit)? = null) {
+        end()
+        onDirectEnd?.invoke()
+    }
+
+    fun requestChooseTheme(theme: ConversationTheme?, onDone: () -> Unit) {
+        chooseTheme(theme)
+        onDone()
+    }
+
+    fun confirmGuardrailGenerate(onOpenTest: () -> Unit) {
+        val sessionToEvaluate = session
+        val currentPassages = sessionToEvaluate?.passages ?: emptyList()
+        val topicTitle = sessionToEvaluate?.title ?: selectedTheme?.title ?: language.defaultTitle
+        val mcerLevel = currentMcerLevel
+        val transcriptContext = currentPassages.takeLast(12).joinToString("\n") { p ->
+            "${p.speaker.name.uppercase()}: ${p.text}"
+        }
+        showGuardrailDialog = false
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        if (isRunning) end()
+        pending?.invoke()
+
+        val config = TestConfig(
+            prompt = topicTitle,
+            topicId = selectedTheme?.id,
+            languageID = language.id,
+            mcerLevel = mcerLevel,
+            allowedTypes = TestItemType.entries,
+            questionCount = 8,
+            mediumCount = 8,
+            includeFlashcards = true
+        )
+
+        generateTest(
+            config = config,
+            conversationContext = transcriptContext,
+            onDone = onOpenTest
+        )
+    }
+
+    fun confirmGuardrailFinish() {
+        showGuardrailDialog = false
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        if (isRunning) end()
+        pending?.invoke()
+    }
+
+    fun dismissGuardrail() {
+        showGuardrailDialog = false
+        guardrailPendingAction = null
+    }
+
+    fun generateTest(
+        config: TestConfig,
+        conversationContext: String = "",
+        avoidPrompts: List<String> = emptyList(),
+        existingTestId: String? = null,
+        sessionID: String? = null,
+        onDone: (() -> Unit)? = null
+    ) {
+        if (generatingTestIds.size >= 2 || !cloudReady()) return
+
+        val testId = existingTestId ?: ("test_" + UUID.randomUUID().toString().take(8))
+        val targetModule = LanguageRegistry.get(config.languageID) ?: language
+
+        val placeholder = LearningTest(
+            id = testId,
+            title = if (config.prompt.isNotBlank()) config.prompt.take(45) else "Evaluación: ${targetModule.name}",
+            topicId = config.topicId,
+            topicTitle = if (config.prompt.isNotBlank()) config.prompt else "Práctica general",
+            mcerLevel = config.mcerLevel,
+            difficulty = TestDifficulty.MEDIUM,
+            status = TestStatus.GENERATING,
+            config = config,
+            languageID = targetModule.id
+        )
+        learningTestStore.upsertTest(placeholder)
+        generatingTestIds = generatingTestIds + testId
+        refreshLearningTests()
+
+        viewModelScope.launch {
+            try {
+                val instructions = TeachingPolicy.generateTest(
+                    language = targetModule,
+                    config = config,
+                    conversationContext = conversationContext,
+                    avoidPrompts = avoidPrompts
+                )
+
+                val result = teaching(
+                    localID = sessionID ?: session?.id,
+                    purpose = HelperPurpose.TEST,
+                    logicalID = UUID.randomUUID().toString(),
+                    instructions = instructions,
+                    input = if (config.prompt.isNotBlank()) config.prompt.take(500) else "Práctica de ${targetModule.name}",
+                    schema = null,
+                    search = false
+                )
+
+                val raw = result.text.trim()
+                val parsed = parseLearningTest(raw, config, targetModule.id, testId, createdAt = placeholder.createdAt)
+                if (parsed != null && (parsed.items.isNotEmpty() || parsed.flashcards.isNotEmpty())) {
+                    val ready = parsed.copy(status = TestStatus.READY, createdAt = placeholder.createdAt)
+                    learningTestStore.upsertTest(ready)
+                    refreshLearningTests()
+                    activeTest = ready
+                    activeFlashcards = ready.flashcards
+                    onDone?.invoke()
+                } else {
+                    val failed = placeholder.copy(
+                        status = TestStatus.FAILED,
+                        errorMessage = "La respuesta de la IA no pudo interpretarse."
+                    )
+                    learningTestStore.upsertTest(failed)
+                    refreshLearningTests()
+                }
+            } catch (e: Exception) {
+                val failed = placeholder.copy(
+                    status = TestStatus.FAILED,
+                    errorMessage = e.message?.take(90) ?: "Error de red al generar el test."
+                )
+                learningTestStore.upsertTest(failed)
+                refreshLearningTests()
+            } finally {
+                generatingTestIds = generatingTestIds - testId
+                refreshLearningTests()
+            }
+        }
+    }
+
+    fun generateTest(
+        topicTitle: String,
+        mcerLevel: String,
+        difficulty: TestDifficulty,
+        targetLanguage: LanguageModule = language,
+        conversationContext: String = "",
+        userPrompt: String = "",
+        questionCount: Int = 10,
+        onDone: (() -> Unit)? = null
+    ) {
+        val config = TestConfig(
+            prompt = userPrompt.ifBlank { topicTitle },
+            topicId = null,
+            languageID = targetLanguage.id,
+            mcerLevel = mcerLevel,
+            allowedTypes = TestItemType.entries,
+            questionCount = questionCount.coerceIn(5, 30),
+            includeFlashcards = true
+        )
+        generateTest(config, conversationContext = conversationContext, onDone = onDone)
+    }
+
+    fun retryFailedTest(testId: String) {
+        val test = learningTests.find { it.id == testId } ?: return
+        val cfg = test.config ?: TestConfig(
+            prompt = test.topicTitle,
+            topicId = test.topicId,
+            languageID = test.languageID,
+            mcerLevel = test.mcerLevel,
+            allowedTypes = TestItemType.entries,
+            questionCount = 10
+        )
+        generateTest(config = cfg, existingTestId = testId)
+    }
+
+    fun refreshTestQuestions(testId: String) {
+        val test = learningTests.find { it.id == testId } ?: return
+        val cfg = test.config ?: TestConfig(
+            prompt = test.topicTitle,
+            topicId = test.topicId,
+            languageID = test.languageID,
+            mcerLevel = test.mcerLevel,
+            allowedTypes = test.items.map { it.type }.distinct().ifEmpty { TestItemType.entries },
+            questionCount = test.items.size.coerceIn(5, 15)
+        )
+        val avoid = test.items.map { it.prompt }
+        generateTest(config = cfg, avoidPrompts = avoid)
+    }
+
+    fun triggerPostConversationTest(sessionRecord: SessionRecord) {
+        val userPassages = sessionRecord.passages.filter { it.speaker == Speaker.user && it.text.isNotBlank() }
+        if (userPassages.isEmpty()) return
+
+        val themeTitle = selectedTheme?.title ?: sessionRecord.title.ifBlank { "Recent conversation" }
+        val activeMcer = currentMcerLevel
+        val targetLanguage = language
+        val contextString = TeachingPolicy.context(sessionRecord)
+
+        val config = TestConfig(
+            prompt = "Comprehensive 25-question evaluation based on conversation: $themeTitle",
+            topicId = selectedTheme?.id,
+            languageID = targetLanguage.id,
+            mcerLevel = activeMcer,
+            allowedTypes = listOf(
+                TestItemType.READING_COMPREHENSION,
+                TestItemType.CLOZE_BANK,
+                TestItemType.MULTIPLE_CHOICE,
+                TestItemType.ERROR_CORRECTION,
+                TestItemType.SPEAKING
+            ),
+            questionCount = 25,
+            includeFlashcards = false
+        )
+
+        notice = getApplication<Application>().getString(R.string.tests_post_conversation_notice)
+        generateTest(config = config, conversationContext = contextString, sessionID = sessionRecord.id)
+    }
+
+    suspend fun translatePromptOnly(prompt: String, sourceLanguageId: String = language.id): String {
+        if (!cloudReady() || prompt.isBlank()) return prompt
+        val module = LanguageRegistry.get(sourceLanguageId) ?: language
+        val meaningLang = archive.preferences.meaningLanguage
+        return try {
+            val result = teaching(
+                localID = session?.id,
+                purpose = HelperPurpose.MEANING,
+                logicalID = UUID.randomUUID().toString(),
+                instructions = TeachingPolicy.translation(module, meaningLang),
+                input = prompt.take(500)
+            )
+            result.text.trim()
+        } catch (e: Exception) {
+            android.util.Log.w("MuralTranslatePrompt", "Error translating prompt", e)
+            prompt
+        }
+    }
+
+    private fun parseLearningTest(
+        raw: String,
+        config: TestConfig,
+        languageID: String = "en",
+        testId: String = "test_" + java.util.UUID.randomUUID().toString().take(8),
+        createdAt: Long = System.currentTimeMillis()
+    ): LearningTest? {
+        return try {
+            val firstBrace = raw.indexOf('{')
+            val lastBrace = raw.lastIndexOf('}')
+            val cleanCandidate = if (firstBrace in 0 until lastBrace) {
+                raw.substring(firstBrace, lastBrace + 1)
+            } else if (raw.startsWith("```")) {
+                raw.substringAfter("\n").substringBeforeLast("```").trim()
+            } else raw.trim()
+
+            val root = try {
+                Json.parseToJsonElement(cleanCandidate).jsonObject
+            } catch (initialErr: Exception) {
+                val itemsIdx = raw.indexOf("\"items\"")
+                if (itemsIdx >= 0) {
+                    val afterItems = raw.substring(itemsIdx)
+                    val lastItemEnd = afterItems.lastIndexOf('}')
+                    if (lastItemEnd > 0) {
+                        val repaired = raw.substring(0, itemsIdx + lastItemEnd + 1) + "\n], \"flashcards\": []}"
+                        Json.parseToJsonElement(repaired).jsonObject
+                    } else throw initialErr
+                } else throw initialErr
+            }
+
+            val title = (root["title"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: if (config.prompt.isNotBlank()) config.prompt.take(45) else "Evaluación ${config.mcerLevel}"
+            val topicTitle = (root["topicTitle"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+                ?: if (config.prompt.isNotBlank()) config.prompt else "Práctica general"
+            val mcer = (root["mcerLevel"] as? JsonPrimitive)?.contentOrNull?.uppercase()?.trim()
+                ?.takeIf { it in TopicEcosystemStore.MCER_LEVELS } ?: config.mcerLevel
+
+            val rawItems = (root["items"] as? JsonArray) ?: JsonArray(emptyList())
+            val parsedItems = rawItems.mapIndexedNotNull { index, el ->
+                val obj = el as? JsonObject ?: return@mapIndexedNotNull null
+                val typeStr = (obj["type"] as? JsonPrimitive)?.contentOrNull?.lowercase() ?: "multiple_choice"
+                val type = when {
+                    typeStr.contains("cloze") || typeStr.contains("bank") -> TestItemType.CLOZE_BANK
+                    typeStr.contains("fill") -> TestItemType.FILL_BLANK
+                    typeStr.contains("error") || typeStr.contains("correct") -> TestItemType.ERROR_CORRECTION
+                    typeStr.contains("reading") || typeStr.contains("comprehension") -> TestItemType.READING_COMPREHENSION
+                    typeStr.contains("speak") || typeStr.contains("oral") -> TestItemType.SPEAKING
+                    else -> TestItemType.MULTIPLE_CHOICE
+                }
+
+                // If only 1 type was requested, enforce it
+                val finalType = if (config.allowedTypes.size == 1) config.allowedTypes.first() else type
+
+                val prompt = (obj["prompt"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val context = (obj["context"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val readingPassage = (obj["readingPassage"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val rawWordBank = (obj["wordBank"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.replace("*", "") } ?: emptyList()
+                val incorrectWord = (obj["incorrectWord"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val rawOptions = (obj["options"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.replace("*", "") } ?: emptyList()
+                val correctAnswer = (obj["correctAnswer"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val explanation = (obj["explanation"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+                val targetSpeech = (obj["targetSpeechText"] as? JsonPrimitive)?.contentOrNull?.replace("*", "") ?: ""
+
+                val finalOptions = if (finalType == TestItemType.MULTIPLE_CHOICE ||
+                    (finalType == TestItemType.ERROR_CORRECTION && rawOptions.isNotEmpty()) ||
+                    (finalType == TestItemType.READING_COMPREHENSION && rawOptions.isNotEmpty())) {
+                    val opts = rawOptions.map { it.trim() }.filter {
+                        it.isNotBlank() && !it.startsWith("Opción", ignoreCase = true) && !it.startsWith("Option", ignoreCase = true)
+                    }.toMutableList()
+                    if (correctAnswer.isNotBlank() && !opts.any { it.equals(correctAnswer.trim(), ignoreCase = true) }) {
+                        opts.add(correctAnswer.trim())
+                    }
+                    val distinctOpts = opts.distinct()
+                    if (distinctOpts.size > 4) {
+                        val correct = distinctOpts.firstOrNull { it.equals(correctAnswer.trim(), ignoreCase = true) }
+                        val rest = distinctOpts.filterNot { it.equals(correctAnswer.trim(), ignoreCase = true) }.shuffled().take(3)
+                        (listOfNotNull(correct) + rest).shuffled()
+                    } else {
+                        distinctOpts
+                    }
+                } else emptyList()
+
+                val finalWordBank = if (finalType == TestItemType.CLOZE_BANK) {
+                    val wb = rawWordBank.map { it.trim() }.toMutableList()
+                    if (correctAnswer.isNotBlank() && !wb.any { it.equals(correctAnswer.trim(), ignoreCase = true) }) {
+                        wb.add(correctAnswer.trim())
+                    }
+                    wb.distinct().shuffled()
+                } else emptyList()
+
+                val id = (obj["id"] as? JsonPrimitive)?.contentOrNull ?: "q_${index + 1}"
+                val item = LearningTestItem(
+                    id = id,
+                    type = finalType,
+                    prompt = prompt.ifBlank { "Select the correct option:" },
+                    context = context,
+                    options = finalOptions,
+                    correctAnswer = correctAnswer,
+                    explanation = explanation,
+                    targetSpeechText = targetSpeech,
+                    readingPassage = readingPassage,
+                    wordBank = finalWordBank,
+                    incorrectWord = incorrectWord
+                )
+                if (finalType == TestItemType.MULTIPLE_CHOICE ||
+                    (finalType == TestItemType.ERROR_CORRECTION && finalOptions.isNotEmpty()) ||
+                    (finalType == TestItemType.READING_COMPREHENSION && finalOptions.isNotEmpty())) {
+                    item.copy(options = AnswerGrader.shuffleOptions(item))
+                } else item
+            }
+
+            val targetCount = if (config.allowedTypes.isEmpty() && config.includeFlashcards) 0 else config.questionCount.coerceIn(0, 30)
+            val countLimited = parsedItems.take(targetCount)
+            val finalItems = if (config.allowedTypes.size > 1 && countLimited.size > 1) {
+                interleaveTestItems(countLimited)
+            } else {
+                countLimited
+            }
+
+            val rawFlashcards = if (config.includeFlashcards) {
+                (root["flashcards"] as? JsonArray) ?: JsonArray(emptyList())
+            } else JsonArray(emptyList())
+
+            val parsedFlashcards = rawFlashcards.mapIndexedNotNull { index, el ->
+                val obj = el as? JsonObject ?: return@mapIndexedNotNull null
+                val front = (obj["front"] as? JsonPrimitive)?.contentOrNull ?: return@mapIndexedNotNull null
+                val back = (obj["back"] as? JsonPrimitive)?.contentOrNull ?: return@mapIndexedNotNull null
+                val example = (obj["example"] as? JsonPrimitive)?.contentOrNull ?: ""
+                val pronunciation = (obj["pronunciationGuide"] as? JsonPrimitive)?.contentOrNull ?: ""
+                val id = (obj["id"] as? JsonPrimitive)?.contentOrNull ?: "f_${index + 1}"
+                FlashcardItem(id, front, back, example, pronunciation)
+            }
+            val flashcards = if (config.allowedTypes.isEmpty() && config.includeFlashcards && config.questionCount > 0) {
+                parsedFlashcards.take(config.questionCount)
+            } else {
+                parsedFlashcards
+            }
+
+            LearningTest(
+                id = testId,
+                title = title,
+                topicId = config.topicId,
+                topicTitle = topicTitle,
+                mcerLevel = mcer,
+                difficulty = TestDifficulty.MEDIUM,
+                status = TestStatus.READY,
+                config = config,
+                createdAt = createdAt,
+                items = finalItems,
+                flashcards = flashcards,
+                languageID = languageID
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun interleaveTestItems(items: List<LearningTestItem>): List<LearningTestItem> {
+        val readingGroups = items.filter { it.type == TestItemType.READING_COMPREHENSION }
+            .groupBy { it.readingPassage.ifBlank { it.id } }
+            .values.toList()
+        val nonReading = items.filterNot { it.type == TestItemType.READING_COMPREHENSION }
+        val byType = nonReading.groupBy { it.type }.values.map { it.toMutableList() }.toMutableList()
+
+        val result = mutableListOf<LearningTestItem>()
+        var rIdx = 0
+        var addedAny = true
+        while (addedAny) {
+            addedAny = false
+            for (typeList in byType) {
+                if (typeList.isNotEmpty()) {
+                    result.add(typeList.removeAt(0))
+                    addedAny = true
+                }
+            }
+            if (rIdx < readingGroups.size) {
+                result.addAll(readingGroups[rIdx])
+                rIdx++
+                addedAny = true
+            }
+        }
+        return if (result.size == items.size) result else items
+    }
 
     private val reports = ReportController(viewModelScope,
         ReportConfiguration.parse(BuildConfig.MANAGED_API_ORIGIN)?.let(::ReportClient))
@@ -199,12 +848,20 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     private var resetJob: Job? = null
     private var assessmentJob: Job? = null
     private var actionJob: Job? = null
-    private val meanings = MeaningController(viewModelScope, canRetryFailure = HostedHelperRetry::canRetryAtBoundary,
-        retryDelay = HostedHelperRetry::automaticDelay, stream = { request, onText -> translateMeaning(request, onText) }) { request -> translateMeaning(request) }
+    private val meanings = MeaningController(
+        viewModelScope,
+        delayMillis = 100,
+        incompleteDelayMillis = 350,
+        minimumSpacingMillis = 500,
+        canRetryFailure = HostedHelperRetry::canRetryAtBoundary,
+        retryDelay = HostedHelperRetry::automaticDelay,
+        stream = { request, onText -> translateMeaning(request, onText) }
+    ) { request -> translateMeaning(request) }
     private suspend fun translateMeaning(request: MeaningRequest, onText: ((String) -> Unit)? = null): MeaningResult {
         if (archive.preferences.aiConsentVersion != 1) throw IllegalStateException("AI processing consent is required.")
         val module = LanguageRegistry.get(request.learningLanguageID) ?: throw IllegalStateException("Unsupported language.")
         if (request.sessionID in hostedSessionIDs && request.translationInput.toByteArray(Charsets.UTF_8).size > 24_576) throw MeaningInputLimitException()
+        android.util.Log.d("MuralMeaning", "translateMeaning input: '${request.translationInput}', target: ${request.meaningLanguage}")
         val result = teaching(request.sessionID, HelperPurpose.MEANING, request.cacheKey,
             TeachingPolicy.translation(module, request.meaningLanguage), request.translationInput, onText = onText)
         return MeaningResult(result.text, result.usage.input, result.usage.output)
@@ -220,6 +877,18 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     var inactivitySeconds by mutableStateOf<Int?>(null); private set
     private fun activityNow() = System.nanoTime() / 1_000_000_000.0
     fun noteTypingActivity() { if (state == "active" && voiceSession) { activity.typing(activityNow()); inactivitySeconds = null } }
+    fun setTyping(typing: Boolean) {
+        if (state == "active" && voiceSession) {
+            if (typing) {
+                activity.typing(activityNow())
+                inactivitySeconds = null
+            }
+            transport.send(buildJsonObject {
+                put("type", if (typing) "session.typing.start" else "session.typing.stop")
+                put("event_id", UUID.randomUUID().toString())
+            })
+        }
+    }
     private var generation = 0
 
     init {
@@ -238,7 +907,9 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 conversationProvider = providers.selection
                 finalAssessmentTickets = ConversationProviderPolicy.recoveryTickets(loaded.first.finalAssessments, hostedSessionIDs)
                 hasKey = loaded.second
+                credentialProvider = credentials.provider
                 storageReady = true
+                refreshLearningTests()
                 recoverFinalAssessments()
                 refreshHostedReadiness()
                 if (accountChangeBlocked) reconcileHostedSessions()
@@ -277,7 +948,13 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         transport.onLevels = { input, output ->
             inputLevel = input; outputLevel = output
             if (state == "active" && voiceSession) {
-                if (input > 0.03) activity.inputActive(activityNow())
+                if (input > 0.03) {
+                    activity.inputActive(activityNow())
+                    if (input > 0.05) {
+                        activity.learnerEngaged(activityNow())
+                        inactivitySeconds = null
+                    }
+                }
                 if (output > 0.03) activity.assistantActive(activityNow())
             }
         }
@@ -343,6 +1020,15 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         finalAssessmentTickets = ConversationProviderPolicy.enqueueRecovery(s, finalAssessmentTickets, hostedSessionIDs)
         archive = archive.copy(sessions = (archive.sessions.filterNot { it.id == s.id } + clone(s)).toMutableList())
         persist()
+        s.themeID?.let { tid ->
+            if (s.endedAt != null || s.passages.size >= 2) {
+                val words = s.assessments.flatMap { it.words }.map { it.lemma }.distinct().take(4)
+                val lastExchange = s.passages.takeLast(2).joinToString(" ") { it.text.take(60) }
+                val summary = if (words.isNotEmpty()) "Practiced ${words.joinToString(", ")}: $lastExchange"
+                              else lastExchange.takeIf { it.isNotBlank() } ?: s.title
+                topicEcosystemStore.setThemeMemory(tid, summary.take(180))
+            }
+        }
     }
     private fun updateSession(change: (SessionRecord) -> Unit) {
         val current = session ?: return
@@ -607,14 +1293,14 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun saveKey(key: String) {
         if (isRunning) return
-        try { credentials.save(key); hasKey = credentials.hasKey; selectConversationProvider(ConversationProvider.PERSONAL_KEY); recoverFinalAssessments(); notice = getApplication<Application>().getString(R.string.notice_key_saved) }
+        try { credentials.save(key); hasKey = credentials.hasKey; credentialProvider = credentials.provider; selectConversationProvider(ConversationProvider.PERSONAL_KEY); recoverFinalAssessments(); notice = getApplication<Application>().getString(R.string.notice_key_saved) }
         catch (e: Exception) { presentError(e, R.string.error_key_save_failed) }
     }
     fun deleteKey() {
         if (isRunning) return
-        try { credentials.delete(); hasKey = false }
+        try { credentials.delete(); hasKey = false; credentialProvider = null }
         catch (e: Exception) { presentError(e, R.string.error_key_delete_failed) }
-        finally { hasKey = credentials.hasKey }
+        finally { hasKey = credentials.hasKey; credentialProvider = credentials.provider }
     }
     fun updatePreferences(preferences: Preferences) {
         if (isRunning || !storageReady) return
@@ -631,11 +1317,17 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         persist(); scheduleTranslation(); recoverFinalAssessments(); refreshHostedReadiness()
     }
     fun selectLanguage(id: String) {
-        if (!isRunning && LanguageRegistry.get(id) != null) updatePreferences(archive.preferences.copy(learningLanguageID = id))
+        if (!isRunning && LanguageRegistry.get(id) != null) {
+            updatePreferences(archive.preferences.copy(learningLanguageID = id))
+            refreshCustomThemes()
+            refreshLearningTests()
+        }
     }
     fun chooseTheme(theme: ConversationTheme?) {
         if (!isRunning && session != null) resetConversation()
         selectedTheme = theme
+        currentPedagogicalMode = topicEcosystemStore.getPedagogicalMode(theme?.id)
+        currentMcerLevel = topicEcosystemStore.getMcerLevel(theme?.id)
         if (state == "active") {
             updateSession { it.themeID = theme?.id; it.title = theme?.title ?: language.defaultTitle }
             command("instructions", TeachingPolicy.theme(theme, language))
@@ -680,6 +1372,67 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         topicResult?.takeIf { it.languageID == language.id && selectedTheme?.id == "current" }?.let { record.topics += it }
         session = record; save(record)
     }
+    fun startWritten(theme: ConversationTheme? = null) {
+        if (isRunning || !cloudReady()) return
+        theme?.let {
+            selectedTheme = it
+            currentPedagogicalMode = topicEcosystemStore.getPedagogicalMode(it.id)
+            currentMcerLevel = topicEcosystemStore.getMcerLevel(it.id)
+        }
+        val choice = conversationProvider
+        if (!ConversationProviderPolicy.canStart(choice, hasKey, hostedReadiness)) {
+            if (choice == ConversationProvider.HOSTED_MINUTES) {
+                showMinuteAccess = true; refreshHostedReadiness()
+            } else presentError(getApplication<Application>().getString(R.string.error_missing_key), true)
+            return
+        }
+        newSession(false); state = "active"; startDurationChecks()
+        triggerWrittenGreeting()
+    }
+    fun startWrittenSession(theme: ConversationTheme? = null) = startWritten(theme)
+    fun triggerWrittenGreeting() {
+        val current = session ?: return
+        if (current.passages.isNotEmpty() || working) return
+        val id = current.id
+        val token = generation
+        working = true
+        actionJob = viewModelScope.launch {
+            try {
+                val instructions = TeachingPolicy.typedReply(
+                    language = language,
+                    theme = selectedTheme,
+                    mcerLevel = currentMcerLevel,
+                    personality = selectedTheme?.let { getThemePersonality(it.id) },
+                    themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
+                    pedagogicalMode = currentPedagogicalMode
+                ) + "\n" + TeachingPolicy.greeting(language)
+
+                val contextStr = "TARGET LANGUAGE: ${language.id}\n${selectedTheme?.let { "ACTIVE THEME: ${it.title} (ID: ${it.id})\n" } ?: ""}NEW CONVERSATION GREETING"
+                val result = teaching(id, HelperPurpose.TYPED_REPLY, UUID.randomUUID().toString(), instructions, contextStr)
+                if (token != generation || session?.id != id || state != "active") return@launch
+                updateSession { addUsage(it, result.usage) }
+                updateSession {
+                    it.append(Fragment(speaker = Speaker.assistant, text = result.text, startMS = 0, endMS = 1000))
+                }
+                scheduleTranslation()
+            } catch (_: CancellationException) { }
+            catch (e: Exception) {
+                android.util.Log.w("MuralWritten", "triggerWrittenGreeting fallback engaged", e)
+                val fallback = selectedTheme?.situation ?: language.greeting
+                updateSession {
+                    it.append(Fragment(speaker = Speaker.assistant, text = fallback, startMS = 0, endMS = 1000))
+                }
+                scheduleTranslation()
+            } finally {
+                if (token == generation) working = false
+            }
+        }
+    }
+    fun getPassageTranslation(passage: Passage): String? {
+        val sess = session ?: return null
+        val key = MeaningRequest.cacheKey(passage.revisionKey, archive.preferences.meaningLanguage)
+        return sess.translations[key]
+    }
     fun start() {
         if (isRunning || !cloudReady()) return
         val choice = conversationProvider
@@ -696,7 +1449,18 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         newSession(true); state = "connecting"
         val id = session!!.id
         val module = language
-        val instructions = TeachingPolicy.voice(module, learner, selectedTheme, archive.preferences.interests, archive.preferences.meaningLanguage)
+        val instructions = TeachingPolicy.voice(
+            language = module,
+            learner = learner,
+            theme = selectedTheme,
+            interests = archive.preferences.interests,
+            meaningLanguage = archive.preferences.meaningLanguage,
+            voiceSpeed = voiceSpeed,
+            mcerLevel = currentMcerLevel,
+            personality = selectedTheme?.let { getThemePersonality(it.id) },
+            themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
+            pedagogicalMode = currentPedagogicalMode
+        )
         val history = ConversationHistory.messages(session)
         if (choice == ConversationProvider.HOSTED_MINUTES) accountChangeBlocked = true
         connectionJob = viewModelScope.launch {
@@ -725,8 +1489,11 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                transport.connect(provider, instructions, history, module.locale)
+                transport.connect(provider, instructions, history, module.locale, voiceName = voiceTimbre)
             } catch (cancelled: CancellationException) {
+                if (cancelled is TimeoutCancellationException) {
+                    if (session?.id == id && isRunning) fail(cancelled, R.string.error_voice_connect_failed)
+                }
                 if (choice == ConversationProvider.HOSTED_MINUTES) reconcileHostedSessions()
                 throw cancelled
             } catch (e: Exception) {
@@ -768,6 +1535,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             if (it.id in hostedSessionIDs) {
                 hostedBindings.ended(it.id); reconcileHostedSessions(); finishHostedAssessment(clone(it))
             } else finalAssessments.submit(clone(it))
+            triggerPostConversationTest(clone(it))
         }
         scheduleTranslation(utteranceComplete = true)
         resetJob = viewModelScope.launch { delay(15000); if (state == "ended") resetConversation() }
@@ -781,6 +1549,8 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         if (isRunning) return
         generation++; resetJob?.cancel(); actionJob?.cancel(); clearLookup(); assessmentJob?.cancel(); languageCheckJob?.cancel(); meanings.reset()
         session = null; selectedTheme = null; topicResult = null
+        currentPedagogicalMode = topicEcosystemStore.getPedagogicalMode(null)
+        currentMcerLevel = topicEcosystemStore.getMcerLevel(null)
         notice = null; working = false; state = "idle"; voiceSession = false
     }
     private fun command(kind: String, content: String, delegationID: String? = null): Boolean {
@@ -805,6 +1575,9 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 val end = event["end_ms"]?.jsonPrimitive?.intOrNull ?: return
                 if (start < 0 || end < start || text.length > 50000) return
                 val speaker = if (event["type"]?.jsonPrimitive?.content == "session.input_transcript.delta") Speaker.user else Speaker.assistant
+                if (speaker == Speaker.user && isSpuriousInputTranscript(text, language.id, archive.preferences.meaningLanguage)) {
+                    return
+                }
                 updateSession { it.append(Fragment(id = event["event_id"]?.jsonPrimitive?.content ?: UUID.randomUUID().toString(), speaker = speaker, text = text, startMS = start, endMS = end, meaningVisible = archive.preferences.meaningVisible)) }
                 if (text.isNotBlank()) {
                     if (speaker == Speaker.user) { activity.learnerEngaged(activityNow()); inactivitySeconds = null }
@@ -823,6 +1596,20 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             }
             "error" -> { notice = getApplication<Application>().getString(R.string.notice_voice_update_rejected) }
         }
+    }
+    private fun isSpuriousInputTranscript(text: String, targetLanguageID: String, meaningLanguage: String): Boolean {
+        val target = targetLanguageID.lowercase()
+        val meaning = meaningLanguage.lowercase()
+        val isGermanContext = target == "de" || meaning.contains("deutsch") || meaning.contains("german") || meaning.contains("alemán")
+        if (!isGermanContext) {
+            val lower = text.lowercase()
+            val spuriousPatterns = listOf(
+                "sehr technisch", "diskret und infidel", "alle gleich wie",
+                "sehr diskret", "und infidel", "technisch diskret"
+            )
+            if (spuriousPatterns.any { lower.contains(it) }) return true
+        }
+        return false
     }
     private fun startDurationChecks() {
         durationJob?.cancel()
@@ -900,7 +1687,16 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         val module = LanguageRegistry.get(snapshot.languageID) ?: throw IllegalStateException("Unsupported language.")
         val result = teaching(snapshot.id, HelperPurpose.ASSESSMENT, passage.revisionKey,
             TeachingPolicy.assessment(module), helperContext(snapshot, passage), assessmentSchema(module.id))
-        val decoded = json.decodeFromString<AssessmentResponse>(result.text)
+        val rawText = result.text.trim()
+        val firstBrace = rawText.indexOf('{')
+        val lastBrace = rawText.lastIndexOf('}')
+        val cleanText = if (firstBrace in 0 until lastBrace) {
+            rawText.substring(firstBrace, lastBrace + 1)
+        } else if (rawText.startsWith("```")) {
+            rawText.substringAfter("\n").substringBeforeLast("```").trim()
+        } else rawText
+        val decoded = json.decodeFromString<AssessmentResponse>(cleanText)
+        android.util.Log.d("MuralAssessment", "requestAssessment decoded outcome=${decoded.outcome}, words=${decoded.words.size}")
         val proposal = Assessment(passage.id, passage.revisionKey, decoded.outcome, decoded.suggestedLevel, decoded.nextGoal, decoded.capability, decoded.words, context = snapshot.themeID ?: "free", textAssemblyVersion = 2)
         return FinalAssessmentResult(snapshot.id, snapshot.languageID, proposal, result.usage.input, result.usage.output, result.usage.searches)
     }
@@ -930,14 +1726,20 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleAssessment() {
         assessmentJob?.cancel()
         assessmentJob = viewModelScope.launch {
-            delay(3000)
+            delay(6000)
             val snapshot = session?.let(::clone) ?: return@launch
-            val passage = snapshot.passages.lastOrNull { it.speaker == Speaker.user && it.text.length >= 3 } ?: return@launch
+            val passage = snapshot.passages.lastOrNull { it.speaker == Speaker.user && it.text.trim().length >= 2 } ?: return@launch
             if (snapshot.assessments.any { it.passageID == passage.id && it.revisionKey == passage.revisionKey }) return@launch
             try {
+                android.util.Log.d("MuralAssessment", "Running assessment for passage: ${passage.text}")
                 val result = requestAssessment(snapshot, passage)
                 val current = archive.sessions.firstOrNull { it.id == snapshot.id && it.languageID == snapshot.languageID } ?: return@launch
-                val valid = LearningEngine.validate(result.assessment, current) ?: return@launch
+                val valid = LearningEngine.validate(result.assessment, current)
+                if (valid == null) {
+                    android.util.Log.w("MuralAssessment", "LearningEngine.validate rejected assessment for passage: ${passage.text}")
+                    return@launch
+                }
+                android.util.Log.d("MuralAssessment", "Assessment validated! Words recorded: ${valid.words.map { it.lemma }}")
                 val updated = clone(current)
                 updated.assessments.removeAll { it.passageID == valid.passageID }; updated.assessments += valid
                 addUsage(updated, APIUsage(result.inputTokens, result.outputTokens, result.searchCalls)); save(updated)
@@ -949,7 +1751,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                         command("instructions", conversationPace.instruction)
                     }
                 }
-            } catch (_: CancellationException) { } catch (_: Exception) { /* No unverified progress. */ }
+            } catch (_: CancellationException) { }
+            catch (e: Exception) {
+                android.util.Log.w("MuralAssessment", "Assessment scheduling failed", e)
+            }
         }
     }
     private fun delegate(id: String) {
@@ -984,10 +1789,20 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             else ((nowSeconds() - session!!.startedAt) * 1000).toInt().coerceAtLeast(0)
         val fragment = Fragment(speaker = Speaker.user, text = clean, startMS = offset, endMS = offset + 1, meaningVisible = archive.preferences.meaningVisible, typed = true)
         val draft = clone(session!!).also { it.append(fragment) }
+        if (!voiceSession) {
+            updateSession { it.append(fragment) }
+        }
         if (voiceSession) { activity.learnerEngaged(activityNow()); inactivitySeconds = null }; working = true
         actionJob = viewModelScope.launch {
             try {
-                val instructions = if (voiceSession) TeachingPolicy.typedReply(language) else TeachingPolicy.voice(language, learner, selectedTheme, archive.preferences.interests, archive.preferences.meaningLanguage) + "\n" + TeachingPolicy.typedReply(language)
+                val instructions = TeachingPolicy.typedReply(
+                    language = language,
+                    theme = selectedTheme,
+                    mcerLevel = currentMcerLevel,
+                    personality = selectedTheme?.let { getThemePersonality(it.id) },
+                    themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
+                    pedagogicalMode = currentPedagogicalMode
+                )
                 val result = teaching(id, HelperPurpose.TYPED_REPLY, UUID.randomUUID().toString(), instructions, helperContext(draft))
                 if (token != generation || session?.id != id || state != "active") return@launch
                 updateSession { addUsage(it, result.usage) }
@@ -998,7 +1813,6 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     updateSession { it.append(fragment) }
                 } else {
-                    updateSession { it.append(fragment) }
                     val end = ((nowSeconds() - session!!.startedAt) * 1000).toInt().coerceAtLeast(offset + 2)
                     updateSession { it.append(Fragment(speaker = Speaker.assistant, text = result.text, startMS = end, endMS = end + 1)) }
                     scheduleTranslation()
@@ -1007,9 +1821,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 scheduleAssessment()
             } catch (_: CancellationException) { }
             catch (e: Exception) {
+                android.util.Log.e("MuralTypedReply", "sendTypedReply error", e)
                 if (session?.id == id) {
                     typedReplyError = resolveMessage(e, R.string.error_send_message_failed)
-                    if (errorNeedsKeySetup(e) || needsAccountRecovery(e)) presentError(e, R.string.error_send_message_failed)
+                    if (errorNeedsKeySetup(e) || needsAccountRecovery(e) || !voiceSession) presentError(e, R.string.error_send_message_failed)
                 }
             }
             finally { if (token == generation) working = false }

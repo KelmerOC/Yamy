@@ -322,25 +322,26 @@ struct SettingsView: View {
                 Section {
                     DisclosureGroup(isExpanded: $showingAPIKey) {
                         if hasKey { Label("Your key is saved on this iPhone", systemImage: "checkmark.shield") }
-                        SecureField(hasKey ? "Replace OpenAI key" : "OpenAI API key", text: $key)
+                        SecureField(hasKey ? "Replace API key" : "API key (OpenAI / Gemini)", text: $key)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive().accessibilityIdentifier("api-key")
                         Button(hasKey ? "Save replacement key" : "Save key") {
                             do { try CredentialStore.save(key); key = ""; hasKey = true; message = "Saved securely. Start a conversation to connect." }
                             catch { message = error.localizedDescription }
                         }.disabled(key.isEmpty || coordinator.isRunning)
                         Link("Open OpenAI API keys", destination: URL(string: "https://platform.openai.com/api-keys")!)
+                        Link("Open Google AI Studio keys", destination: URL(string: "https://aistudio.google.com/app/apikey")!)
                         if hasKey {
                             Button("Remove key", role: .destructive) {
                                 do { try CredentialStore.delete(); hasKey = false; message = "Your key has been removed." }
                                 catch { message = error.localizedDescription }
                             }.disabled(coordinator.isRunning)
                         }
-                        Text("Your OpenAI account pays for usage. The key stays in this iPhone’s Keychain and is sent only to OpenAI.")
+                        Text("Your provider account pays for usage. The key stays in this iPhone’s Keychain and is sent only to your chosen provider (OpenAI or Google).")
                             .font(.footnote).foregroundStyle(MuralColor.secondary)
                     } label: { Label("Use your own API key", systemImage: "key").accessibilityIdentifier("advanced-api-key") }
                     if let message { Text(message).font(.footnote).foregroundStyle(MuralColor.secondary) }
                 } header: { Text("Advanced") } footer: {
-                    if !hasKey { Text("This version uses your OpenAI API key to start a conversation.") }
+                    if !hasKey { Text("This version uses your own API key (OpenAI or Google Gemini) to start a conversation.") }
                 }
                 Section {
                     Picker("Conversation limit", selection: Binding(get: { store.preferences.sessionMinutes }, set: { value in store.updatePreferences { $0.sessionMinutes = value } })) {

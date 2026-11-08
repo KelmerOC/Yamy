@@ -18,10 +18,15 @@ internal suspend fun <T> streamingResponse(client: OkHttpClient, request: Reques
 }
 
 /** SSE has blank-line event boundaries and may contain multiple data lines. */
-internal suspend fun readTextEvents(response: Response, receive: suspend (JsonObject) -> JsonObject?): JsonObject {
+internal suspend fun readTextEvents(
+    response: Response,
+    allowNaturalEnd: Boolean = false,
+    receive: suspend (JsonObject) -> JsonObject?,
+): JsonObject {
     val source = response.body?.source() ?: throw IOException("Missing stream")
     val data = StringBuilder()
     var total = 0L
+    var lastEvent: JsonObject? = null
     while (!source.exhausted()) {
         currentCoroutineContext().ensureActive()
         val line = source.readUtf8LineStrict(65_536)
@@ -30,8 +35,12 @@ internal suspend fun readTextEvents(response: Response, receive: suspend (JsonOb
         if (line.isEmpty()) {
             if (data.isEmpty()) continue
             val payload = data.toString(); data.clear()
-            if (payload == "[DONE]") throw IOException("Stream ended without a result")
+            if (payload == "[DONE]") {
+                if (allowNaturalEnd && lastEvent != null) return lastEvent
+                throw IOException("Stream ended without a result")
+            }
             val event = Json.parseToJsonElement(payload) as? JsonObject ?: throw IOException("Invalid stream event")
+            lastEvent = event
             receive(event)?.let { return it }
         } else if (line.startsWith("data:")) {
             if (data.isNotEmpty()) data.append('\n')
@@ -39,5 +48,16 @@ internal suspend fun readTextEvents(response: Response, receive: suspend (JsonOb
             if (data.toString().toByteArray(Charsets.UTF_8).size > 65_536) throw IOException("Event exceeds limit")
         }
     }
+    if (data.isNotEmpty()) {
+        val payload = data.toString()
+        if (payload != "[DONE]") {
+            val event = Json.parseToJsonElement(payload) as? JsonObject
+            if (event != null) {
+                lastEvent = event
+                receive(event)?.let { return it }
+            }
+        }
+    }
+    if (allowNaturalEnd && lastEvent != null) return lastEvent
     throw IOException("Stream ended without a result")
 }

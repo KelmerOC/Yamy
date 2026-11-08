@@ -41,3 +41,34 @@ apps/android/local.properties
 apps/android/.idea/
 *.jks
 *.keystore
+
+# Secrets and credentials (never commit)
+*.pem
+*.key
+*.der
+*.crt
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+credentials*.json
+local.properties
+apps/android/.signing/
+
+# Build artifacts and binaries
+*.apk
+*.aab
+web/dist/
+motion-graphics/**/out/
+coverage/
+*.log
+
+# Editors, local agent tooling and private working notes
+.idea/
+.vscode/
+.agents/
+skills-lock.json
+.local/
+STATUS.md
+
+motion-graphics/remotion-mural/public/soundtrack_118bpm.wav
+motion-graphics/remotion-mural/public/reference-images/

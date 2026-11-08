@@ -23,7 +23,7 @@ Mural is for adults aged 18 and older. An internet connection is required. AI ca
 
 Paid top-ups are not available yet. You can optionally add your own OpenAI API key in Advanced settings. This requires your own OpenAI billing and access to the supported models; OpenAI charges your project directly for that usage.
 
-Mural is open source under the MIT License. Explore the code at github.com/Chuloo/mural.
+Mural is open source under the MIT License. Explore the code at github.com/KelmerOC/Yamy.
 
 Support: hi@hackmamba.io
 Privacy: mural.chat/privacy/

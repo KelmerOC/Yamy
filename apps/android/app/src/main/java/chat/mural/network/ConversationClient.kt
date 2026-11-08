@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 enum class HelperPurpose(val wireValue: String) {
     MEANING("meaning"), ASSESSMENT("assessment"), LOOKUP("lookup"), DELEGATION("delegation"),
-    TYPED_REPLY("typed_reply"), TOPIC("topic"), HELP("help")
+    TYPED_REPLY("typed_reply"), TOPIC("topic"), HELP("help"), TEST("test")
 }
 
 interface TeachingClient {
@@ -29,6 +29,8 @@ data class LiveSessionRequest(val sdp: String, val instructions: String, val his
 
 interface LiveSessionProvider {
     suspend fun createLiveSession(request: LiveSessionRequest): LiveSessionConnection
+    val providerType: CredentialStore.ProviderType? get() = null
+    val apiKey: String? get() = null
 }
 
 /** Lease metadata is opaque to the native audio layer. It never contains credentials or prompt text. */

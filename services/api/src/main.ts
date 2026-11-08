@@ -15,6 +15,8 @@ import { AIReports, aiReportConfig, pruneAIReports } from './feedback.js';
 import { configuredMinuteCommerce } from './minute-commerce-config.js';
 import { HostedHelpers } from './hosted-helpers.js';
 import { OpenAIHostedResponses } from './hosted-responses-transport.js';
+import { GeminiHostedResponses } from './gemini-hosted-responses.js';
+import { GeminiLiveProvider } from './gemini-live-provider.js';
 import { InstallationGuestMinuteAttestor } from './guest-minutes.js';
 
 const diagnostics = new Diagnostics(record => { console.log(JSON.stringify(record)); });
@@ -23,6 +25,7 @@ if (!databaseURL) { diagnostics.record('service_failed', { operation: 'startup.d
 const db = connectDatabase(databaseURL);
 let hosted: HostedVoice | undefined;
 let hostedHelpers: HostedHelpers | undefined;
+let geminiLiveProvider: GeminiLiveProvider | undefined;
 let minuteCommerce: Awaited<ReturnType<typeof configuredMinuteCommerce>>;
 try {
   const origin = new URL(process.env.PUBLIC_ORIGIN ?? 'http://localhost:8080');
@@ -52,6 +55,11 @@ try {
   if (process.env.HOSTED_HELPERS_EXPERIMENTAL === 'true' &&
     (process.env.HOSTED_VOICE_EXPERIMENTAL !== 'true' || process.env.HOSTED_VOICE_BILLING_UNIT !== 'milliseconds'))
     throw new Error('Hosted helpers require minute-funded voice.');
+  const providerType: 'openai' | 'gemini' =
+    process.env.HOSTED_PROVIDER === 'gemini' || (!process.env.OPENAI_API_KEY && Boolean(process.env.GEMINI_API_KEY))
+      ? 'gemini'
+      : 'openai';
+
   if (process.env.HOSTED_VOICE_EXPERIMENTAL === 'true') {
     const billingUnit = process.env.HOSTED_VOICE_BILLING_UNIT ?? 'nanoUSD';
     if (billingUnit !== 'nanoUSD' && billingUnit !== 'milliseconds') throw new Error('Invalid hosted billing unit.');
@@ -59,7 +67,10 @@ try {
     if ([...accounts].some(account => !/^[a-f0-9-]{36}$/.test(account))) throw new Error();
     const lifetimeFundingCapNano = BigInt(process.env.HOSTED_VOICE_LIFETIME_CAP_NANO ?? '0');
     if (process.env.HOSTED_HELPERS_EXPERIMENTAL === 'true') {
-      hostedHelpers = new HostedHelpers(db, new OpenAIHostedResponses(process.env.OPENAI_API_KEY ?? '', fetch, diagnostics), {
+      const helperTransport = providerType === 'gemini'
+        ? new GeminiHostedResponses(process.env.GEMINI_API_KEY ?? '', fetch, diagnostics)
+        : new OpenAIHostedResponses(process.env.OPENAI_API_KEY ?? '', fetch, diagnostics);
+      hostedHelpers = new HostedHelpers(db, helperTransport, {
         accountAllowlist: accounts, aggregateFundingCapNano: lifetimeFundingCapNano,publicMinuteAccess,publicPaidAccess,
         helperBudgetNanoPerMinute: BigInt(process.env.HOSTED_HELPER_BUDGET_PER_MINUTE_NANO ?? '50000000'),
         maxRequestsPerMinute: Number(process.env.HOSTED_HELPER_REQUESTS_PER_MINUTE ?? '24'),
@@ -69,7 +80,10 @@ try {
       });
       await hostedHelpers.expireBudgets();
     }
-    hosted = new HostedVoice(db, new OpenAILiveProvider(process.env.OPENAI_API_KEY ?? '', { diagnostics }),
+    const liveProvider = providerType === 'gemini'
+      ? (geminiLiveProvider = new GeminiLiveProvider(process.env.GEMINI_API_KEY ?? '', { diagnostics }))
+      : new OpenAILiveProvider(process.env.OPENAI_API_KEY ?? '', { diagnostics });
+    hosted = new HostedVoice(db, liveProvider,
       { accountAllowlist: accounts, billingUnit, lifetimeFundingCapNano,publicMinuteAccess,publicPaidAccess, helpers: hostedHelpers,
         diagnostics });
     await hosted.start();
@@ -95,6 +109,7 @@ try {
     !(appleClient && appleRevoker)) throw new Error('No account identity provider configured.');
   const app = createApp({ db, auth: { googleClientID: process.env.GOOGLE_CLIENT_ID, appleClientID: appleClient,
     googleAndroidServerClientID, googleAndroidClientIDs }, payments, appleRevoker, hosted, hostedHelpers,
+    geminiLiveProvider, providerType,
     minuteCommerce, accessRequests, accounts, aiReports,guestMinuteAttestor,
     diagnostics });
   const cleanup = setInterval(() => {

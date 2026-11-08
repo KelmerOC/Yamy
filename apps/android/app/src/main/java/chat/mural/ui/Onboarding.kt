@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -69,15 +70,17 @@ const val AI_CONSENT_VERSION = 1
 fun OnboardingScreen(
     initialLanguageId: String,
     initialMeaningLanguage: String,
+    appLanguage: String = "es",
+    onSelectAppLanguage: (String) -> Unit = {},
     onComplete: (languageId: String, meaningLanguage: String) -> Unit,
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     var languageId by rememberSaveable(initialLanguageId) { mutableStateOf(initialLanguageId) }
     var meaningLanguage by rememberSaveable(initialMeaningLanguage) { mutableStateOf(initialMeaningLanguage) }
-    val language = LanguageRegistry.get(languageId) ?: LanguageRegistry.all.first()
+    val language = LanguageRegistry.get(languageId) ?: LanguageRegistry.supported.first()
     val phase = muralPhase()
-    val greetingIndex = ((phase / 2.736f).toInt()) % LanguageRegistry.all.size
-    val greeting = if (phase == 0f) language.greeting else LanguageRegistry.all[greetingIndex].greeting
+    val greetingIndex = ((phase / 2.736f).toInt()) % LanguageRegistry.supported.size
+    val greeting = if (phase == 0f) language.greeting else LanguageRegistry.supported[greetingIndex].greeting
     Box(Modifier.fillMaxSize()) {
         SoftAnimatedBackground(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -86,10 +89,12 @@ fun OnboardingScreen(
                     onClick = { step = 0 }, modifier = Modifier.testTag("onboarding-back"), diameter = 44.dp)
                 else Brand()
                 Spacer(Modifier.weight(1f))
+                OnboardingAppLanguagePicker(appLanguage, onSelectAppLanguage)
+                Spacer(Modifier.width(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     repeat(2) { index ->
                         Box(Modifier.size(width = if (index == step) 24.dp else 8.dp, height = 6.dp)
-                            .background(if (index == step) MuralColors.Orange else MuralColors.Peach, CircleShape))
+                            .background(if (index == step) MuralColors.Orange else MuralColors.WatercolorWash, CircleShape))
                     }
                 }
             }
@@ -119,8 +124,8 @@ fun OnboardingScreen(
                             modifier = Modifier.testTag("onboarding-greeting"), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                     Spacer(Modifier.height(if (compact) 12.dp else 30.dp))
-                    if (current == 0) LanguageStep(languageId, compact) { languageId = it }
-                    else MeaningStep(language, meaningLanguage, compact) { meaningLanguage = it }
+                    if (current == 0) LanguageStep(languageId, appLanguage, compact) { languageId = it }
+                    else MeaningStep(language, meaningLanguage, appLanguage, compact) { meaningLanguage = it }
                     Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
                 }
                 }
@@ -129,7 +134,9 @@ fun OnboardingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = {
                     if (step == 0) {
-                        if (meaningLanguage == language.name) meaningLanguage = MeaningLanguages.all.firstOrNull { it != language.name } ?: "English"
+                        if (meaningLanguage == language.name || meaningLanguage == language.displayName) {
+                            meaningLanguage = MeaningLanguages.all.firstOrNull { it != language.name && it != language.displayName } ?: "English"
+                        }
                         step = 1
                     } else onComplete(languageId, meaningLanguage)
                 }, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).testTag("onboarding-continue"), shape = CircleShape,
@@ -145,39 +152,109 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun LanguageStep(selected: String, compact: Boolean, onSelect: (String) -> Unit) {
-    val language = LanguageRegistry.get(selected) ?: LanguageRegistry.all.first()
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 24.dp)) {
-        Text(stringResource(R.string.onboarding_language_title), style = MaterialTheme.typography.headlineSmall,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.semantics { heading() }.testTag("onboarding-language-title"))
-        LanguageDropdown(language.nativeName, language.settingsTitle, "onboarding-language-picker") { close ->
-            LanguageRegistry.all.forEach { option ->
-                androidx.compose.material3.DropdownMenuItem(text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(option.nativeName, style = MaterialTheme.typography.titleMedium)
-                        Text(option.settingsTitle, style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
-                    }
-                }, onClick = { onSelect(option.id); close() }, modifier = Modifier.testTag("onboarding-language-${option.id}"),
-                    trailingIcon = if (selected == option.id) ({ MuralIcon(MuralSymbol.Check, color = MuralColors.Secondary) }) else null)
+private fun OnboardingAppLanguagePicker(selected: String, onSelect: (String) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val current = chat.mural.core.AppLanguages.get(selected)
+    Box {
+        Row(
+            Modifier
+                .clip(CircleShape)
+                .background(MuralColors.Surface.copy(alpha = 0.88f))
+                .border(1.dp, MuralColors.ControlBorder, CircleShape)
+                .clickable(role = Role.Button) { expanded = true }
+                .testTag("onboarding-app-language-picker")
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            MuralIcon(MuralSymbol.Globe, modifier = Modifier.size(15.dp), color = MuralColors.Secondary)
+            Text(current.uiNativeName, style = MaterialTheme.typography.labelLarge, color = MuralColors.Ink)
+            MuralIcon(MuralSymbol.ChevronDown, modifier = Modifier.size(14.dp), color = MuralColors.Secondary)
+        }
+        androidx.compose.material3.DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 360.dp).widthIn(min = 220.dp),
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MuralColors.CreamRaised
+        ) {
+            chat.mural.core.AppLanguages.all.forEach { option ->
+                val isSelected = selected == option.id
+                val localizedSub = chat.mural.core.LanguageNameTranslations.translateById(option.id, selected) ?: option.name
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(option.uiNativeName, style = MaterialTheme.typography.titleMedium)
+                            if (!option.uiNativeName.equals(localizedSub, ignoreCase = true)) {
+                                Text(localizedSub, style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                            }
+                        }
+                    },
+                    onClick = {
+                        onSelect(option.id)
+                        expanded = false
+                    },
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .background(if (isSelected) MuralColors.WatercolorWash else Color.Transparent, RoundedCornerShape(14.dp))
+                        .testTag("onboarding-app-lang-${option.id}"),
+                    trailingIcon = if (isSelected) ({ MuralIcon(MuralSymbol.Check, color = MuralColors.Orange) }) else null
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MeaningStep(language: LanguageModule, selected: String, compact: Boolean, onSelect: (String) -> Unit) {
+private fun LanguageStep(selected: String, appLanguage: String, compact: Boolean, onSelect: (String) -> Unit) {
+    val language = LanguageRegistry.get(selected) ?: LanguageRegistry.supported.first()
+    val subtitleText = if (language.id == "qu") "Quechua Colla" else language.localizedOptionTitle(appLanguage)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (compact) 16.dp else 24.dp)) {
+        Text(stringResource(R.string.onboarding_language_title), style = MaterialTheme.typography.headlineSmall,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.semantics { heading() }.testTag("onboarding-language-title"))
+        LanguageDropdown(language.uiNativeName, subtitleText, "onboarding-language-picker") { close ->
+            LanguageRegistry.supported.forEach { option ->
+                val isSelected = selected == option.id
+                val optSub = if (option.id == "qu") "Quechua Colla" else option.localizedOptionTitle(appLanguage)
+                androidx.compose.material3.DropdownMenuItem(text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(option.uiNativeName, style = MaterialTheme.typography.titleMedium)
+                        if (!option.uiNativeName.equals(optSub, ignoreCase = true)) {
+                            Text(optSub, style = MaterialTheme.typography.bodySmall, color = MuralColors.Secondary)
+                        }
+                    }
+                }, onClick = { onSelect(option.id); close() },
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .background(if (isSelected) MuralColors.WatercolorWash else Color.Transparent, RoundedCornerShape(14.dp))
+                        .testTag("onboarding-language-${option.id}"),
+                    trailingIcon = if (isSelected) ({ MuralIcon(MuralSymbol.Check, color = MuralColors.Orange) }) else null)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeaningStep(language: LanguageModule, selected: String, appLanguage: String, compact: Boolean, onSelect: (String) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 20.dp)) {
         Text(stringResource(R.string.onboarding_meaning_title), style = MaterialTheme.typography.headlineSmall,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.semantics { heading() }.testTag("onboarding-meaning-title"))
-        Text(stringResource(R.string.onboarding_meaning_subtitle, language.name), style = MaterialTheme.typography.bodyMedium,
+        Text(stringResource(R.string.onboarding_meaning_subtitle, language.localizedDisplayName(appLanguage)), style = MaterialTheme.typography.bodyMedium,
             color = MuralColors.Secondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        LanguageDropdown(selected, stringResource(R.string.onboarding_subtitle_language), "onboarding-meaning-picker") { close ->
+        LanguageDropdown(MeaningLanguages.localizedLabel(selected, appLanguage), stringResource(R.string.onboarding_subtitle_language), "onboarding-meaning-picker") { close ->
             MeaningLanguages.all.forEach { name ->
-                androidx.compose.material3.DropdownMenuItem(text = { Text(name) }, onClick = { onSelect(name); close() },
-                    modifier = Modifier.testTag("meaning-$name"),
-                    trailingIcon = if (selected == name) ({ MuralIcon(MuralSymbol.Check, color = MuralColors.Secondary) }) else null)
+                val isSelected = selected == name
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(MeaningLanguages.localizedLabel(name, appLanguage)) },
+                    onClick = { onSelect(name); close() },
+                    modifier = Modifier
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .background(if (isSelected) MuralColors.WatercolorWash else Color.Transparent, RoundedCornerShape(14.dp))
+                        .testTag("meaning-$name"),
+                    trailingIcon = if (isSelected) ({ MuralIcon(MuralSymbol.Check, color = MuralColors.Orange) }) else null
+                )
             }
         }
         if (compact && LocalDensity.current.fontScale <= 1.3f) {
@@ -200,8 +277,8 @@ private fun LanguageDropdown(title: String, subtitle: String, tag: String,
                              options: @Composable androidx.compose.foundation.layout.ColumnScope.(close: () -> Unit) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = .78f))
-            .border(1.dp, Color.White.copy(alpha = .9f), RoundedCornerShape(24.dp))
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(MuralColors.Surface.copy(alpha = .88f))
+            .border(1.dp, MuralColors.ControlBorder, RoundedCornerShape(24.dp))
             .clickable(role = Role.Button) { expanded = true }.testTag(tag).padding(horizontal = 22.dp, vertical = 19.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

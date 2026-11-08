@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">Sumaqllata tupachiy</string>
+    <string name="settings_done">Chayllaña</string>
+    <string name="settings_just_your_pace">Qampa purisqaykiman hina</string>
+    <string name="settings_meaning_subtitles">Ima ninantaq qillqakuna</string>
+    <string name="settings_language_footer">Sapa simim kikin siminkunata, ñawpaqman purisqantapas waqaychan. Yamyqa rimanakuspam purisqaykita tarin.</string>
+    <string name="settings_language_running_footer">Simita tikranapaq kay rimanakuyta tukuy. Sapa simim kikin siminkunata waqaychan.</string>
+    <string name="settings_advanced">Aswan yachaqkunapaq</string>
+    <string name="settings_use_own_key">Kikin API kichanata llamk’achiy</string>
+    <string name="settings_byok_version_footer">Kikin Google Gemini API kichanaykiwan Yamyta llamk’achinapaq ñan.</string>
+    <string name="settings_key_owner_footer">Google AI Studio yupayniykiwan kamachisqa. Kichanaykiqa kay telefonollapim pakasqa waqaychakun.</string>
+    <string name="settings_keep_comfortable">Thakllata apay</string>
+    <string name="settings_limit_minutes">%1$d minutukuna</string>
+</resources>

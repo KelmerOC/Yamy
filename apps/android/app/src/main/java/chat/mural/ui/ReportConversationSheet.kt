@@ -59,7 +59,7 @@ fun ReportConversationSheet(
             if (sent) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Surface(color = MuralColors.Peach, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = MuralColors.WatercolorWash, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
                         Text(copy.success, Modifier.padding(24.dp).testTag("report-success")
                             .semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyLarge)
                     }
@@ -83,7 +83,7 @@ fun ReportConversationSheet(
                     if (!credential && excerpt.isNotBlank() && !validReportExcerpt(excerpt)) Text(copy.invalidText,
                         color = MuralColors.Red, style = MaterialTheme.typography.bodyMedium)
                     Text(copy.reason, style = MaterialTheme.typography.titleSmall)
-                    Surface(color = androidx.compose.ui.graphics.Color.White.copy(alpha = .8f), shape = RoundedCornerShape(24.dp)) {
+                    Surface(color = MuralColors.Surface.copy(alpha = .90f), shape = RoundedCornerShape(24.dp)) {
                         Column(Modifier.fillMaxWidth().selectableGroup().padding(vertical = 6.dp)) {
                             ReportReason.entries.forEach { reason ->
                                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("report-reason-${reason.wireValue}")
@@ -146,28 +146,28 @@ private data class ReportCopy(
 ) {
     companion object {
         val English = ReportCopy(
-            title = "Help Mural improve", close = "Close", thanks = "Thank you", intro = "Review the selected text and remove any personal details before sending.",
+            title = "Help Yamy improve", close = "Close", thanks = "Thank you", intro = "Review the selected text and remove any personal details before sending.",
             excerpt = "Text to report", shortened = "This excerpt has been shortened. You can edit it before sending.",
             invalidText = "Remove unsupported characters before sending.",
             credential = "This looks like it includes a key or sign-in token. Remove it before sending.", reason = "What went wrong?",
             reasons = mapOf(ReportReason.OFFENSIVE to "Offensive or unsafe", ReportReason.INCORRECT to "Incorrect teaching or meaning",
                 ReportReason.WRONG_LANGUAGE to "The wrong language", ReportReason.OTHER to "Something else"),
-            disclosure = "Mural receives this excerpt, its learning language and your selected reason. We review reports to improve safety. Reports expire after 30 days and are then deleted. Audio and the rest of your conversation stay out of the report.",
-            consent = "I agree to send this text to Mural for review.", unavailable = "Reporting is currently unavailable. Try again later or contact support below.",
+            disclosure = "Yamy receives this excerpt, its learning language and your selected reason. We review reports to improve safety. Reports expire after 30 days and are then deleted. Audio and the rest of your conversation stay out of the report.",
+            consent = "I agree to send this text to Yamy for review.", unavailable = "Reporting is currently unavailable. Try again later or contact support below.",
             checking = "Checking availability…", failure = "Your report could not be confirmed. Please try again.", sending = "Sending your report…", success = "Your report has been received.",
-            successDetail = "We use reports to review Mural’s responses and improve how it teaches.", done = "Done", send = "Send report", retry = "Try again",
+            successDetail = "We use reports to review Yamy’s responses and improve how it teaches.", done = "Done", send = "Send report", retry = "Try again",
         )
         val Spanish = ReportCopy(
-            title = "Ayuda a mejorar Mural", close = "Cerrar", thanks = "Gracias", intro = "Revisa el texto seleccionado y elimina los datos personales antes de enviarlo.",
+            title = "Ayuda a mejorar Yamy", close = "Cerrar", thanks = "Gracias", intro = "Revisa el texto seleccionado y elimina los datos personales antes de enviarlo.",
             excerpt = "Texto del informe", shortened = "Este fragmento se ha acortado. Puedes editarlo antes de enviarlo.",
             invalidText = "Elimina los caracteres no admitidos antes de enviar.",
             credential = "Parece que hay una clave o un token de acceso. Elimínalo antes de enviar.", reason = "¿Qué ha pasado?",
             reasons = mapOf(ReportReason.OFFENSIVE to "Contenido ofensivo o peligroso", ReportReason.INCORRECT to "Enseñanza o significado incorrectos",
                 ReportReason.WRONG_LANGUAGE to "Idioma incorrecto", ReportReason.OTHER to "Otro problema"),
-            disclosure = "Mural recibe este fragmento, el idioma que estás aprendiendo y el motivo seleccionado. Revisamos los informes para mejorar la seguridad. Los informes caducan a los 30 días y después se eliminan. El audio y el resto de la conversación no se incluyen.",
-            consent = "Acepto enviar este texto a Mural para su revisión.", unavailable = "Los informes no están disponibles ahora. Inténtalo más tarde o contacta con el soporte a continuación.",
+            disclosure = "Yamy recibe este fragmento, el idioma que estás aprendiendo y el motivo seleccionado. Revisamos los informes para mejorar la seguridad. Los informes caducan a los 30 días y después se eliminan. El audio y el resto de la conversación no se incluyen.",
+            consent = "Acepto enviar este texto a Yamy para su revisión.", unavailable = "Los informes no están disponibles ahora. Inténtalo más tarde o contacta con el soporte a continuación.",
             checking = "Comprobando disponibilidad…", failure = "No hemos podido confirmar el envío. Inténtalo de nuevo.", sending = "Enviando tu informe…", success = "Hemos recibido tu informe.",
-            successDetail = "Los informes nos ayudan a revisar las respuestas de Mural y mejorar su enseñanza.", done = "Listo", send = "Enviar informe", retry = "Intentar de nuevo",
+            successDetail = "Los informes nos ayudan a revisar las respuestas de Yamy y mejorar su enseñanza.", done = "Listo", send = "Enviar informe", retry = "Intentar de nuevo",
         )
     }
 }

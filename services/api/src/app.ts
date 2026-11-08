@@ -4,11 +4,13 @@ import type { Database } from './db.js';
 import { accountProfile, authenticate, bearerHash, createChallenge, deleteAccount, exchangeIdentity, hasGoogleSignIn, signOut, type verifyIdentity, type AppleRevoker, type AuthConfig } from './auth.js';
 import { HelperSessionLimitError, ServiceError } from './errors.js';
 import { applyStripeEvent, type SandboxPayments } from './payments.js';
-import { RATE_VERSION } from './pricing.js';
+import { RATE_VERSION, RATE_VERSION_GEMINI } from './pricing.js';
 import { aiPricingPolicy } from './ai-top-up-pricing.js';
 import { conversationBalance } from './conversation-balance.js';
 import { trialEligibility, UnconfiguredAttestor, type TrialAttestor } from './trial.js';
 import type { HostedVoice } from './hosted-voice.js';
+import type { GeminiLiveProvider } from './gemini-live-provider.js';
+import { WebSocketServer } from 'ws';
 import { ACCESS_REQUEST_PATH, trustedClientNetwork, type AccessRequests } from './access-requests.js';
 import type { AuthAdmission } from './auth-admission.js';
 import { claimWelcomeMinutes, minuteBalance, UnconfiguredMinuteAttestor, type MinuteAttestor } from './minutes.js';
@@ -19,12 +21,15 @@ import type { AIValuePurchases, PurchaseFulfillmentRouter } from './ai-value-pur
 import type { StripeMinuteProvider } from './stripe-minute-provider.js';
 import type { PlayMinuteProvider } from './play-minute-provider.js';
 import { HOSTED_HELPER_BODY_LIMIT, type HostedHelpers } from './hosted-helpers.js';
+import { getPublicAppCatalog } from './public-catalog.js';
 import { Diagnostics, errorReference } from './diagnostics.js';
 import { startupDiagnostic, type StartupDiagnostic } from './startup-diagnostics.js';
 
 export interface Services { diagnostics?: Diagnostics; db: Database; auth: AuthConfig; payments?: SandboxPayments; attestor?: TrialAttestor; minuteAttestor?: MinuteAttestor; guestMinuteAttestor?: GuestMinuteAttestor; appleRevoker?: AppleRevoker; hosted?: HostedVoice; accessRequests?: AccessRequests; aiReports?: AIReports;
   onStartupDiagnostic?: (diagnostic: StartupDiagnostic) => void | Promise<void>;
   hostedHelpers?: HostedHelpers;
+  geminiLiveProvider?: GeminiLiveProvider;
+  providerType?: 'openai' | 'gemini';
   minuteCommerce?: { purchases: MinutePurchases; aiPurchases?: AIValuePurchases; fulfillment?: PurchaseFulfillmentRouter;
     stripe?: StripeMinuteProvider; play?: PlayMinuteProvider };
   accounts?: { admission: AuthAdmission; identityVerifier?: typeof verifyIdentity } }
@@ -153,13 +158,44 @@ export function createApp(services: Services) {
   app.get('/readyz', async () => {
     await db.query('SELECT 1'); return { database: true, ...featureState() };
   });
-  app.get('/v1/pricing', async () => ({ currency: 'USD', rateVersion: RATE_VERSION, moneyUnit: 'nanoUSD',
-    nanoUSDPerDollar: '1000000000', creditNanoUSD: '10000000', serviceFeePercent: (await aiPricingPolicy(db)).serviceFeeBasisPoints / 100,
-    voice: { model: 'gpt-live-1', perMinuteNanoUSD: '50000000', billingUnit: 'active-session-seconds' },
-    text: { model: 'gpt-5.6-luna', inputPerTokenNanoUSD: '200', cachedInputPerTokenNanoUSD: '20', outputPerTokenNanoUSD: '1200' },
-    searchPerCallNanoUSD: '10000000', paymentFees: 'quoted separately at checkout', hostedVoiceAvailable: featureState().hostedVoice,
-    consumerUnit: 'prepaid-ai-value', consumerBillingBasis: 'actual-ai-usage', freeAllowanceUnit:'conversation-minutes',
-    paidMinuteEstimatesOnly:true,minutePacks: [], minutePurchasesAvailable: false }));
+  app.get('/v1/pricing', async () => {
+    const isGemini = services.providerType === 'gemini';
+    return {
+      currency: 'USD',
+      rateVersion: isGemini ? RATE_VERSION_GEMINI : RATE_VERSION,
+      moneyUnit: 'nanoUSD',
+      nanoUSDPerDollar: '1000000000',
+      creditNanoUSD: '10000000',
+      serviceFeePercent: (await aiPricingPolicy(db)).serviceFeeBasisPoints / 100,
+      voice: isGemini
+        ? { model: 'gemini-3.8-live', perMinuteNanoUSD: '35000000', billingUnit: 'active-session-seconds' }
+        : { model: 'gpt-live-1', perMinuteNanoUSD: '50000000', billingUnit: 'active-session-seconds' },
+      text: isGemini
+        ? { model: 'gemini-3.8-flash', inputPerTokenNanoUSD: '100', cachedInputPerTokenNanoUSD: '25', outputPerTokenNanoUSD: '400' }
+        : { model: 'gpt-5.6-luna', inputPerTokenNanoUSD: '200', cachedInputPerTokenNanoUSD: '20', outputPerTokenNanoUSD: '1200' },
+      searchPerCallNanoUSD: isGemini ? '35000' : '10000000',
+      paymentFees: 'quoted separately at checkout',
+      hostedVoiceAvailable: featureState().hostedVoice,
+      consumerUnit: 'prepaid-ai-value',
+      consumerBillingBasis: 'actual-ai-usage',
+      freeAllowanceUnit: 'conversation-minutes',
+      paidMinuteEstimatesOnly: true,
+      minutePacks: [],
+      minutePurchasesAvailable: false
+    };
+  });
+  app.get('/v1/public/catalog', async (_request, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*');
+    return getPublicAppCatalog();
+  });
+  app.options('/v1/public/catalog', async (_request, reply) => {
+    reply
+      .header('Access-Control-Allow-Origin', '*')
+      .header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+      .header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+      .code(204)
+      .send();
+  });
   app.route({ method: ['POST', 'OPTIONS'], url: ACCESS_REQUEST_PATH, bodyLimit: 1024,
     onRequest: async (request, reply) => {
       const access = services.accessRequests;
@@ -360,7 +396,7 @@ export function createApp(services: Services) {
   app.get('/v1/live/capabilities', async request => {
     if (!services.hosted?.minuteFunded || !services.hosted.available || !services.hostedHelpers || !request.headers.authorization) return { hostedMinutes: false };
     const account = await authenticate(db, request.headers.authorization, true);
-    return { hostedMinutes: services.hosted.allows(account) && services.hostedHelpers.allows(account), experimental: true };
+    return { hostedMinutes: services.hosted.allows(account) && services.hostedHelpers.allows(account), experimental: true, provider: services.providerType ?? 'openai' };
   });
   app.post('/v1/live/sessions', async request => {
     if (!services.hosted?.available) throw new ServiceError('hosted_voice_not_ready', 503);
@@ -436,5 +472,35 @@ export function createApp(services: Services) {
     }
   });
   app.get('/payment-return', async (_request, reply) => reply.type('text/html').send('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Mural sandbox</title><body><h1>Return to Mural</h1><p>This is a sandbox payment test. The app checks payment confirmation independently.</p></body></html>'));
+
+  if (services.geminiLiveProvider) {
+    const wss = new WebSocketServer({ noServer: true });
+    app.server.on('upgrade', async (req, socket, head) => {
+      try {
+        const url = new URL(req.url ?? '', 'http://localhost');
+        const match = /^\/v1\/live\/sessions\/([a-zA-Z0-9_-]+)\/stream$/.exec(url.pathname);
+        if (!match) {
+          return;
+        }
+        const sessionID = match[1]!;
+        const authHeader = req.headers.authorization ?? (url.searchParams.get('token') ? `Bearer ${url.searchParams.get('token')}` : undefined);
+        const account = await authenticate(db, authHeader, true);
+        const row = (await db.query('SELECT state FROM hosted_sessions WHERE id=$1 AND account_id=$2', [sessionID, account])).rows[0];
+        if (!row || !['creating', 'active'].includes(row.state)) {
+          socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        wss.handleUpgrade(req, socket, head, clientWs => {
+          services.geminiLiveProvider!.handleClientStream(sessionID, clientWs);
+        });
+      } catch {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+      }
+    });
+  }
+
   return app;
 }

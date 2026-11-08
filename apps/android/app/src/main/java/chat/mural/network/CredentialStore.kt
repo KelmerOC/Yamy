@@ -23,10 +23,14 @@ class CredentialStore internal constructor(
     val hasKey: Boolean
         get() = read() != null
 
+    val provider: ProviderType?
+        get() = providerFor(read())
+
     @Synchronized
     fun save(key: String) {
-        val value = key.trim()
-        if (!value.startsWith("sk-") || value.length < 20 || value.any(Char::isWhitespace)) {
+        val value = key.trim().removeSurrounding("\"").removeSurrounding("'").trim()
+        val isSupportedPrefix = value.startsWith("sk-") || value.startsWith("AIza") || value.startsWith("AQ")
+        if (!isSupportedPrefix || value.length < 20 || value.any(Char::isWhitespace)) {
             throw CredentialException.Invalid
         }
 
@@ -59,7 +63,7 @@ class CredentialStore internal constructor(
                 GCMParameterSpec(GCM_TAG_BITS, Base64.decode(encodedIv, Base64.NO_WRAP)),
             )
             cipher.doFinal(Base64.decode(encodedCiphertext, Base64.NO_WRAP)).toString(Charsets.UTF_8)
-                .takeIf { it.startsWith("sk-") && it.length >= 20 && it.none(Char::isWhitespace) }
+                .takeIf { (it.startsWith("sk-") || it.startsWith("AIza") || it.startsWith("AQ")) && it.length >= 20 && it.none(Char::isWhitespace) }
                 ?: clearUnreadableCredential()
         } catch (_: Exception) {
             clearUnreadableCredential()
@@ -108,7 +112,7 @@ class CredentialStore internal constructor(
     }
 
     sealed class CredentialException(message: String) : IllegalStateException(message) {
-        data object Invalid : CredentialException("Enter a valid OpenAI API key.")
+        data object Invalid : CredentialException("Enter a valid Google Gemini API key.")
         data object Save : CredentialException("The key couldn't be saved securely on this device.")
         data object Remove : CredentialException("The key couldn't be removed. Unlock this device and try again.")
     }
@@ -122,5 +126,14 @@ class CredentialStore internal constructor(
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
+
+        fun providerFor(key: String?): ProviderType? = when {
+            key?.startsWith("sk-") == true -> ProviderType.OPENAI
+            key?.startsWith("AIza") == true || key?.startsWith("AQ") == true -> ProviderType.GEMINI
+            !key.isNullOrBlank() -> ProviderType.GEMINI
+            else -> null
+        }
     }
+
+    enum class ProviderType { OPENAI, GEMINI }
 }

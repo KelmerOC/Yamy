@@ -15,8 +15,25 @@ enum ConnectionState: Equatable { case idle, connecting, active, closing, ended,
     private var localTrack: RTCAudioTrack?
     private var meterTask: Task<Void, Never>?
     private var attempt = UUID()
-    private(set) var started = false
-    private(set) var isMuted = false
+    private lazy var geminiTransport: GeminiLiveTransport = {
+        let t = GeminiLiveTransport()
+        t.onEvent = { [weak self] event in self?.onEvent?(event) }
+        t.onLevels = { [weak self] inLevel, outLevel in self?.onLevels?(inLevel, outLevel) }
+        t.onFailure = { [weak self] message in self?.onFailure?(message) }
+        return t
+    }()
+    private var isGeminiActive = false
+    private var _started = false
+    private var _isMuted = false
+
+    var started: Bool {
+        get { isGeminiActive ? geminiTransport.started : _started }
+        set { _started = newValue }
+    }
+    var isMuted: Bool {
+        get { isGeminiActive ? geminiTransport.isMuted : _isMuted }
+        set { _isMuted = newValue }
+    }
     private var closing = false
     private var ownsAudioActivation = false
     private var lastInput = 0.0, lastOutput = 0.0
@@ -31,6 +48,12 @@ enum ConnectionState: Equatable { case idle, connecting, active, closing, ended,
     func connect(api: APIClient, instructions: String, history: [[String: Any]]) async throws {
         disconnect()
         closing = false
+        if CredentialStore.provider == .gemini, let key = CredentialStore.read() {
+            isGeminiActive = true
+            try await geminiTransport.connect(key: key, instructions: instructions, history: history)
+            return
+        }
+        isGeminiActive = false
         let token = UUID(); attempt = token
         let granted = await AVAudioApplication.requestRecordPermission()
         guard granted else { throw TransportError.microphone }
@@ -104,19 +127,35 @@ enum ConnectionState: Equatable { case idle, connecting, active, closing, ended,
     }
 
     @discardableResult func send(_ event: [String: Any]) -> Bool {
+        if isGeminiActive {
+            return geminiTransport.send(event)
+        }
         guard let channel, channel.readyState == .open, let data = try? JSONSerialization.data(withJSONObject: event) else { return false }
         return channel.sendData(RTCDataBuffer(data: data, isBinary: false))
     }
     func mute(_ muted: Bool) {
-        isMuted = muted; localTrack?.isEnabled = !muted
+        isMuted = muted
+        if isGeminiActive {
+            geminiTransport.mute(muted)
+            return
+        }
+        localTrack?.isEnabled = !muted
         _ = send(["type": muted ? "session.input_audio.mute" : "session.input_audio.unmute", "event_id": UUID().uuidString])
     }
     func close() {
+        if isGeminiActive {
+            geminiTransport.close()
+            return
+        }
         networkRecovery.connected()
         closing = true; localTrack?.isEnabled = false; isMuted = true
         _ = send(["type": "session.close", "event_id": UUID().uuidString])
     }
     func disconnect() {
+        if isGeminiActive {
+            geminiTransport.disconnect()
+            isGeminiActive = false
+        }
         networkRecovery.connected()
         attempt = UUID(); meterTask?.cancel(); meterTask = nil
         started = false; closing = true

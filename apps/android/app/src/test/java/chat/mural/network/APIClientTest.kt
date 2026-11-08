@@ -30,9 +30,11 @@ class APIClientTest {
     }
     private lateinit var server: MockWebServer
     private lateinit var api: APIClient
+    private lateinit var geminiApi: APIClient
     @Before fun setup() {
         server = MockWebServer(); server.start()
-        api = APIClient("sk-fake-test-only", OkHttpClient.Builder().followRedirects(false).build(), server.url("/v1/"))
+        api = APIClient("sk-fake-test-only", OkHttpClient.Builder().followRedirects(false).build(), server.url("/v1/"), server.url("/gemini/"))
+        geminiApi = APIClient("AIzaSy-fake-test-key", OkHttpClient.Builder().followRedirects(false).build(), server.url("/v1/"), server.url("/gemini/"))
     }
     @After fun teardown() { server.shutdown() }
     private fun response(text: String = "Hola") = """{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"$text"}]}],"usage":{"input_tokens":12,"output_tokens":7}}"""
@@ -133,4 +135,294 @@ class APIClientTest {
         assertEquals("provider-live", result.providerSessionID); assertNull(result.lease)
         assertNull(body["language"])
     }
+
+    @Test fun geminiRespondsWithGroundingSourcesAndUsage() = runBlocking {
+        val geminiBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "Noticias sobre tecnología" }],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "groundingMetadata": {
+                "webSearchQueries": ["noticias tech"],
+                "groundingChunks": [
+                  { "web": { "uri": "https://example.com/tech", "title": "Tech News" } },
+                  { "web": { "uri": "http://insecure.example.com", "title": "Insecure" } }
+                ]
+              }
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 25,
+            "candidatesTokenCount": 18
+          }
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setBody(geminiBody))
+        val result = geminiApi.respond("instrucciones", "hola", search = true)
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+
+        assertTrue(recorded.path?.startsWith("/gemini/models/${APIClient.GEMINI_MODEL}:generateContent?key=AIzaSy-fake-test-key") == true)
+        val sentJson = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        assertTrue(sentJson.containsKey("systemInstruction"))
+        assertTrue(sentJson.containsKey("contents"))
+        assertTrue(sentJson.containsKey("tools"))
+
+        assertEquals("Noticias sobre tecnología", result.text)
+        assertEquals(1, result.sources.size)
+        assertEquals("Tech News", result.sources.first().title)
+        assertEquals("https://example.com/tech", result.sources.first().url)
+        assertEquals(APIUsage(input = 25, output = 18, searches = 1), result.usage)
+    }
+
+    @Test fun geminiStructuredAssessmentUsesResponseSchema() = runBlocking {
+        val geminiBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "{\"outcome\":\"success\"}" }],
+                "role": "model"
+              },
+              "finishReason": "STOP"
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 40,
+            "candidatesTokenCount": 10
+          }
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setBody(geminiBody))
+        val schema = buildJsonObject {
+            put("type", "object")
+            put("properties", buildJsonObject {
+                put("outcome", buildJsonObject { put("type", "string") })
+                put("level", buildJsonObject { put("type", "integer"); put("minimum", 0); put("maximum", 5) })
+                put("words", buildJsonObject { put("type", "array"); put("maxItems", 12) })
+            })
+            put("required", buildJsonArray { add(JsonPrimitive("outcome")) })
+            put("additionalProperties", false)
+        }
+        val result = geminiApi.respond("assess", "student response", schema = schema)
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("AIzaSy-fake-test-key", recorded.getHeader("x-goog-api-key"))
+        val sentJson = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        val genConfig = sentJson["generationConfig"]!!.jsonObject
+        assertEquals("application/json", genConfig["responseMimeType"]!!.jsonPrimitive.content)
+        assertEquals("low", genConfig["thinkingConfig"]?.jsonObject?.get("thinkingLevel")?.jsonPrimitive?.content)
+
+        val respSchema = genConfig["responseSchema"]!!.jsonObject
+        assertEquals("OBJECT", respSchema["type"]!!.jsonPrimitive.content)
+        assertFalse(respSchema.containsKey("additionalProperties"))
+        val levelProp = respSchema["properties"]!!.jsonObject["level"]!!.jsonObject
+        assertFalse(levelProp.containsKey("minimum"))
+        assertFalse(levelProp.containsKey("maximum"))
+        val wordsProp = respSchema["properties"]!!.jsonObject["words"]!!.jsonObject
+        assertFalse(wordsProp.containsKey("maxItems"))
+        assertEquals("{\"outcome\":\"success\"}", result.text)
+    }
+
+    @Test fun geminiStreamCompletesGracefullyWithoutExplicitFinishReason() = runBlocking {
+        val chunk1 = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Bonjour\"}]}}]}\n\n"
+        val chunk2 = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" le monde\"}]}}],\"usageMetadata\":{\"promptTokenCount\":10,\"candidatesTokenCount\":5}}\n\n"
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(chunk1 + chunk2))
+
+        val seen = mutableListOf<String>()
+        val result = geminiApi.streamMeaning("translate", "hello world") { seen += it }
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("AIzaSy-fake-test-key", recorded.getHeader("x-goog-api-key"))
+        assertEquals("Bonjour le monde", result.text)
+        assertEquals(listOf("Bonjour", "Bonjour le monde"), seen)
+        assertEquals(APIUsage(10, 5, 0), result.usage)
+    }
+
+    @Test fun geminiStreamsMeaningChunksAndParsesFinalUsage() = runBlocking {
+        val chunk1 = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Bonjour\"}]}}]}\n\n"
+        val chunk2 = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" tout le monde\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":15,\"candidatesTokenCount\":8}}\n\n"
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(chunk1 + chunk2))
+
+        val seen = mutableListOf<String>()
+        val result = geminiApi.streamMeaning("translate", "hello everyone") { seen += it }
+
+        assertEquals(listOf("Bonjour", "Bonjour tout le monde"), seen)
+        assertEquals("Bonjour tout le monde", result.text)
+        assertEquals(APIUsage(input = 15, output = 8, searches = 0), result.usage)
+
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(recorded.path?.contains(":streamGenerateContent") == true)
+        assertEquals("text/event-stream", recorded.getHeader("Accept"))
+    }
+
+    @Test fun geminiRefusalThrowsException() = runBlocking {
+        val geminiBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "" }],
+                "role": "model"
+              },
+              "finishReason": "SAFETY"
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setBody(geminiBody))
+        try {
+            geminiApi.respond("policy", "bad query")
+            fail("Expected refusal exception")
+        } catch (_: APIClient.APIException.Refused) { }
+    }
+
+    @Test fun geminiKeyWithAQPrefixRoutesToGemini() = runBlocking {
+        assertEquals(CredentialStore.ProviderType.GEMINI, CredentialStore.providerFor("AQ.fake-unit-test-key-0000000000"))
+
+        val aqClient = APIClient(
+            "AQ.fake-unit-test-key-0000000000",
+            OkHttpClient.Builder().followRedirects(false).build(),
+            server.url("/v1/"),
+            server.url("/gemini/"),
+        )
+        val geminiBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "Respuesta correcta con clave AQ." }],
+                "role": "model"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setBody(geminiBody))
+        val result = aqClient.respond("instrucciones", "hola")
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+
+        assertTrue(recorded.path?.startsWith("/gemini/models/${APIClient.GEMINI_MODEL}:generateContent?key=AQ.fake-unit-test-key-0000000000") == true)
+        assertEquals("Respuesta correcta con clave AQ.", result.text)
+    }
+
+    @Test fun geminiTypedReplyConfiguresThinkingLevelAndFastTokens() = runBlocking {
+        val geminiBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "¡Me alegro de que estés bien!" }],
+                "role": "model"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setBody(geminiBody))
+        val result = geminiApi.respond("instrucciones", "bien", purpose = HelperPurpose.TYPED_REPLY)
+        val recorded = server.takeRequest(2, TimeUnit.SECONDS)!!
+
+        val sentJson = Json.parseToJsonElement(recorded.body.readUtf8()).jsonObject
+        val genConfig = sentJson["generationConfig"]?.jsonObject
+        assertNotNull(genConfig)
+        assertEquals(1000, genConfig?.get("maxOutputTokens")?.jsonPrimitive?.content?.toInt())
+        assertEquals("low", genConfig?.get("thinkingConfig")?.jsonObject?.get("thinkingLevel")?.jsonPrimitive?.content)
+        assertEquals("¡Me alegro de que estés bien!", result.text)
+    }
+
+    @Test fun geminiRateLimit429FailsOverToFallbackCandidate() = runBlocking {
+        // Enqueue 429 for gemini-3.5-flash-lite (attempt 0 and attempt 1)
+        server.enqueue(MockResponse().setResponseCode(429).setBody("{\"error\":{\"code\":429,\"status\":\"RESOURCE_EXHAUSTED\"}}"))
+        server.enqueue(MockResponse().setResponseCode(429).setBody("{\"error\":{\"code\":429,\"status\":\"RESOURCE_EXHAUSTED\"}}"))
+        // Enqueue 200 OK for fallback model (gemini-3.5-flash)
+        val successBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "Respuesta desde modelo de respaldo." }],
+                "role": "model"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(successBody))
+
+        val result = geminiApi.respond("instrucciones", "hola")
+        assertEquals("Respuesta desde modelo de respaldo.", result.text)
+
+        val req1 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req1.path?.contains("gemini-3.5-flash-lite:generateContent") == true)
+        val req2 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req2.path?.contains("gemini-3.5-flash-lite:generateContent") == true)
+        val req3 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req3.path?.contains("gemini-3.5-flash:generateContent") == true)
+    }
+
+    @Test fun geminiNotFound404FailsOverImmediatelyToFallbackCandidate() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(404).setBody("{\"error\":{\"code\":404,\"status\":\"NOT_FOUND\"}}"))
+        val successBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "Respuesta inmediata tras 404." }],
+                "role": "model"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(successBody))
+
+        val result = geminiApi.respond("instrucciones", "hola")
+        assertEquals("Respuesta inmediata tras 404.", result.text)
+
+        val req1 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req1.path?.contains("gemini-3.5-flash-lite:generateContent") == true)
+        val req2 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req2.path?.contains("gemini-3.5-flash:generateContent") == true)
+    }
+
+    @Test fun geminiStreamMeaningFailsOverOn429() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(429).setBody("{\"error\":{\"code\":429}}"))
+        val chunk = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Bonjour monde\"}]}}],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":4}}\n\n"
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(chunk))
+
+        val seen = mutableListOf<String>()
+        val result = geminiApi.streamMeaning("translate", "hello world") { seen += it }
+        assertEquals("Bonjour monde", result.text)
+
+        val req1 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req1.path?.contains("gemini-3.5-flash-lite:streamGenerateContent") == true)
+        val req2 = server.takeRequest(2, TimeUnit.SECONDS)!!
+        assertTrue(req2.path?.contains("gemini-3.5-flash:streamGenerateContent") == true)
+    }
+
+    @Test fun geminiTestPurposeAllocates8192Tokens() = runBlocking {
+        val successBody = """
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [{ "text": "{\"items\":[]}" }],
+                "role": "model"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(successBody))
+
+        geminiApi.respond("instrucciones", "hola", purpose = HelperPurpose.TEST)
+        val req = server.takeRequest(2, TimeUnit.SECONDS)!!
+        val bodyJson = Json.parseToJsonElement(req.body.readUtf8()).jsonObject
+        val genConfig = bodyJson["generationConfig"]?.jsonObject
+        val maxTokens = genConfig?.get("maxOutputTokens")?.jsonPrimitive?.int
+        assertEquals(8192, maxTokens)
+    }
 }
+

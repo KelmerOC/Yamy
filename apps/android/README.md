@@ -1,15 +1,18 @@
-# Mural for Android
+# Yamy para Android
 
-Native Kotlin and Jetpack Compose client for Android 8.0 or later. It offers voice and written conversation, eight learning languages, 24 themes, meanings, vocabulary and local history, using the owner's OpenAI API key. Mandarin captions link each word and show optional pinyin on Android 10 or later; Android 8 and 9 keep word links without pinyin.
+Cliente nativo de **Yamy** desarrollado en **Kotlin** y **Jetpack Compose** para Android 8.0 (API 26) o superior, basado en la arquitectura de **Mural** (Hackmamba).
 
-Word taps in all eight languages open a contextual meaning sheet, matching the iOS flow. Mandarin uses a bundled offline phrase dictionary with an ICU fallback; unresolved common ambiguous readings retain their source characters.
+Ofrece conversación oral en tiempo real a 16 kHz (`models/gemini-3.8-live`), tutor Maestro y evaluaciones (`gemini-3.5-flash-lite`), 12 idiomas de aprendizaje, 24 escenarios situacionales calibrados por nivel MCER (A1 a C2), subtítulos de significado instantáneo, vocabulario con barras de recuerdo (`RecallBars`) e historial 100% local utilizando la clave personal de Google AI Studio del usuario.
 
-Interface copy lives in `res/values` (English) and `res/values-es` (Spanish); Android picks the translation from the phone's language.
+## Compilación y Pruebas
 
-See [install and build](../../docs/run-on-android.md), [design](../../docs/android/design.md) and [verification](../../verification/android-validation.md).
+Consulta la [Guía de Instalación](../../docs/instalacion.md) y el [Documento de Arquitectura](../../docs/arquitectura.md).
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+git clone https://github.com/KelmerOC/Yamy.git
+cd Yamy/apps/android
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
 ```
 
-Requirements: Java 17, Android SDK 36 and Build Tools 35.0.0. The API key is entered inside the app and must never be configured in Gradle. `local.properties`, private signing keys and build outputs are excluded from Git.
+Requisitos: JDK 17+, Android SDK 36. La clave de API se introduce dentro de la aplicación (**Ajustes > Cuenta de Google AI Studio**) y se almacena cifrada en Android Keystore; nunca debe colocarse en archivos de Gradle ni en el repositorio.

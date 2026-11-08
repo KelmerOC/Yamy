@@ -1,15 +1,17 @@
-# Security
+# Política de Seguridad
 
-Mural’s current source version connects directly from the device to OpenAI using a key entered by the device’s owner. The key stays in Keychain and is not included in learning exports. A shared service key must never be embedded in a distributed app.
+**Yamy** se conecta directamente desde el dispositivo del usuario a Google Gemini utilizando la clave de API personal configurada por el propietario del dispositivo en **Ajustes > Cuenta de Google AI Studio**.
 
-## Report a vulnerability
+## Protección de Credenciales y Datos
 
-Use **Security → Report a vulnerability** in the GitHub repository when private vulnerability reporting is enabled. Include the affected version, reproduction steps and likely impact. Use synthetic conversations and redacted diagnostics; do not send a live credential or another person’s data.
+- **Almacenamiento Cifrado**: La clave de API se guarda cifrada mediante **Android Keystore** (o **Keychain** en iOS) y jamás se exporta en las copias de seguridad de aprendizaje.
+- **Datos Locales**: El historial de conversaciones, las palabras aprendidas, las barras de recuerdo (`RecallBars`) y las evaluaciones permanecen almacenadas localmente en el teléfono.
+- **Prohibición de Secretos en el Código**: Queda estrictamente prohibido incluir archivos `.env`, claves privadas (`AIza...`, `.pem`, `.key`, `.jks`, `.keystore`), rutas locales absolutas o credenciales en el repositorio.
 
-Do not disclose an unpatched vulnerability or credential in a public issue. If the private reporting action is unavailable, email [hi@hackmamba.io](mailto:hi@hackmamba.io).
+## Reportar una Vulnerabilidad
 
-## Scope
+Si descubres un problema de seguridad (exposición de credenciales, acceso no autorizado a datos, importación insegura de copias de seguridad o fugas de información), repórtalo a través de la pestaña **Security > Report a vulnerability** o en el sistema de issues del repositorio oficial:
 
-Useful reports include credential exposure, unauthorized data access, unsafe backup import, content leaking between learners or languages, and ways to bypass future server-enforced usage limits. Incorrect model answers and pronunciation problems belong in ordinary bug reports unless they reveal a security issue.
+- **Repositorio oficial**: https://github.com/KelmerOC/Yamy
 
-Private vulnerability reporting, secret scanning and push protection are enabled. Dependency alerts and security updates are enabled too. CodeQL and the full-history secret-scan workflow check source changes. See the [September 12 review](release/security-audit-2026-09-12.md) for scope and limitations. A response-time commitment has not yet been established.
+No publiques claves reales ni datos personales al reportar un fallo; utiliza ejemplos sintéticos y registros redactados.
