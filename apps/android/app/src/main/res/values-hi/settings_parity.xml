@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">अपनी पसंद अनुसार सेट करें</string>
+    <string name="settings_done">पूर्ण</string>
+    <string name="settings_just_your_pace">अपनी गति से</string>
+    <string name="settings_meaning_subtitles">अर्थ के सबटाइटल</string>
+    <string name="settings_language_footer">प्रत्येक भाषा अपने शब्दों और प्रगति को सुरक्षित रखती है। Yamy बातचीत के माध्यम से आपकी सीखने की गति को समझता है।</string>
+    <string name="settings_language_running_footer">भाषा बदलने के लिए इस बातचीत को समाप्त करें। प्रत्येक भाषा अपने शब्दों और प्रगति को सुरक्षित रखती है।</string>
+    <string name="settings_advanced">उन्नत</string>
+    <string name="settings_use_own_key">अपनी API कुंजी का उपयोग करें</string>
+    <string name="settings_byok_version_footer">अपनी स्वयं की Google Gemini API कुंजी के साथ Yamy का उपयोग करने का एक वैकल्पिक तरीका।</string>
+    <string name="settings_key_owner_footer">उपयोग आपके Google AI Studio खाते के माध्यम से प्रबंधित होता है। कुंजी इस फ़ोन पर एन्क्रिप्टेड रहती है और केवल Google Gemini को भेजी जाती है।</string>
+    <string name="settings_keep_comfortable">सुविधाजनक बनाए रखें</string>
+    <string name="settings_limit_minutes">%1$d मिनट</string>
+</resources>

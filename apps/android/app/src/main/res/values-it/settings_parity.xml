@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_navigation_title">Mettiti a tuo agio</string>
+    <string name="settings_done">Fatto</string>
+    <string name="settings_just_your_pace">Al tuo ritmo</string>
+    <string name="settings_meaning_subtitles">Sottotitoli di significato</string>
+    <string name="settings_language_footer">Ogni lingua conserva le proprie parole e progressi. Yamy trova il tuo ritmo attraverso la conversazione.</string>
+    <string name="settings_language_running_footer">Termina questa conversazione per cambiare lingua. Ogni lingua conserva le proprie parole e progressi.</string>
+    <string name="settings_advanced">Avanzate</string>
+    <string name="settings_use_own_key">Usa la tua chiave API</string>
+    <string name="settings_byok_version_footer">Un modo opzionale per usare Yamy con la tua chiave API personale di Google Gemini.</string>
+    <string name="settings_key_owner_footer">L\'utilizzo è gestito tramite il tuo account Google AI Studio. La chiave rimane crittografata su questo telefono ed è inviata solo a Google Gemini.</string>
+    <string name="settings_keep_comfortable">Con calma</string>
+    <string name="settings_limit_minutes">%1$d minuti</string>
+</resources>
