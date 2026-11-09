@@ -4,7 +4,7 @@
 
 ## Protección de Credenciales y Datos
 
-- **Almacenamiento Cifrado**: La clave de API se guarda cifrada mediante **Android Keystore** (o **Keychain** en iOS) y jamás se exporta en las copias de seguridad de aprendizaje.
+- **Almacenamiento Cifrado**: La clave de API se guarda cifrada mediante **Android Keystore** y jamás se exporta en las copias de seguridad de aprendizaje.
 - **Datos Locales**: El historial de conversaciones, las palabras aprendidas, las barras de recuerdo (`RecallBars`) y las evaluaciones permanecen almacenadas localmente en el teléfono.
 - **Prohibición de Secretos en el Código**: Queda estrictamente prohibido incluir archivos `.env`, claves privadas (`AIza...`, `.pem`, `.key`, `.jks`, `.keystore`), rutas locales absolutas o credenciales en el repositorio.
 

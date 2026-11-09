@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart LR
-    U["Usuario (voz y texto)"] --> A["App Yamy (Android / iOS)"]
+    U["Usuario (voz y texto)"] --> A["App Yamy (Android)"]
     A -- "Audio PCM 16 kHz (WebSocket)" --> L["gemini-3.8-live"]
     L -- "Voz y transcripción" --> A
     A -- "REST / SSE" --> F["gemini-3.5-flash-lite (Maestro)"]
@@ -16,10 +16,10 @@ flowchart LR
 | Carpeta | Tecnología | Responsabilidad |
 | :--- | :--- | :--- |
 | `apps/android` | Kotlin, Jetpack Compose, Coroutines/Flow, AudioRecord/AudioTrack, OkHttp WebSocket | Aplicación principal: conversación oral en vivo, temas, tests, palabras y ajustes. |
-| `apps/ios` | Swift, SwiftUI, AVFoundation, URLSessionWebSocketTask | Cliente nativo iOS equivalente. |
+| `apps/ios` | Swift, SwiftUI, AVFoundation, URLSessionWebSocketTask | Paquete Core y lógica pedagógica compartida (experimental / en desarrollo). |
 | `services/api` | Node.js, TypeScript, Fastify, PostgreSQL | Backend opcional para cuentas gestionadas, facturación y sesiones alojadas. |
-| `shared` | JSON Schema y JSON fixtures | Contratos y casos de prueba compartidos entre Android e iOS. |
-| `scripts` | Python / Swift | Herramientas de sincronización de idiomas y verificación entre plataformas. |
+| `shared` | JSON Schema y JSON fixtures | Contratos y casos de prueba compartidos. |
+| `scripts` | Python / Swift | Herramientas de sincronización de idiomas y verificación de contratos. |
 | `docs` | Markdown | Manual de usuario, guía de instalación, arquitectura y créditos. |
 
 ## Modelos de IA
@@ -44,7 +44,7 @@ En modo personal (BYOK), la aplicación se conecta directamente a Google Gemini 
 ## Datos y privacidad
 
 - Conversaciones, vocabulario, tests y progreso: almacenamiento 100% local en el dispositivo.
-- Clave de API: cifrada con Android Keystore (o Keychain en iOS); nunca se exporta.
+- Clave de API: cifrada con Android Keystore; nunca se exporta.
 - Copias de seguridad: archivo JSON local sin credenciales.
 
 ## Verificación

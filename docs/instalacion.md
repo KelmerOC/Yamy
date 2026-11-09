@@ -55,15 +55,7 @@ adb install -r apps/android/app/build/outputs/apk/debug/app-debug.apk
 
 Abre **Yamy**, elige tu idioma de aprendizaje y el idioma de los significados, y guarda tu clave en **Ajustes > Cuenta de Google AI Studio**. Consulta el [manual de usuario](manual-de-usuario.md).
 
-## 3. Cliente iOS
-
-El código fuente de iOS (Swift, SwiftUI) se encuentra en `apps/ios` y requiere un Mac con Xcode.
-
-1. Abre el proyecto de `apps/ios` en Xcode.
-2. Añade tu cuenta de Apple en **Settings > Accounts**, selecciona tu equipo en **Signing & Capabilities** y define un identificador de paquete único.
-3. Conecta tu iPhone y pulsa **Run**.
-
-## 4. Backend API (`services/api`, opcional)
+## 3. Backend API (`services/api`, opcional)
 
 La aplicación móvil funciona de forma autónoma con tu propia clave de Google AI Studio. Si deseas ejecutar localmente el servidor backend (`services/api`):
 

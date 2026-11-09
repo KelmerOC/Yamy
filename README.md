@@ -6,13 +6,14 @@
 
 **Tu asistente de aprendizaje de idiomas. Habla, escucha y aprende conversando.**
 
+[![Release v0.1.0](https://img.shields.io/badge/Release-v0.1.0%20(APK)-28A745?style=flat-square&logo=android&logoColor=white)](https://github.com/KelmerOC/Yamy/releases/tag/v0.1.0)
 [![Licencia MIT](https://img.shields.io/badge/licencia-MIT-2484E0?style=flat-square)](LICENSE)
 [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-091838?style=flat-square&logo=android&logoColor=white)](docs/instalacion.md)
 [![Kotlin + Compose](https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](apps/android)
 [![Google Gemini](https://img.shields.io/badge/Google-Gemini%20Live-F6D04F?style=flat-square&logo=google&logoColor=091838)](docs/arquitectura.md)
 [![12 idiomas](https://img.shields.io/badge/idiomas-12-2484E0?style=flat-square)](#idiomas)
 
-[Instalación](docs/instalacion.md) · [Manual de usuario](docs/manual-de-usuario.md) · [Arquitectura](docs/arquitectura.md) · [Créditos](#creditos)
+[Descargar APK](https://github.com/KelmerOC/Yamy/releases/download/v0.1.0/yamy-v0.1.0.apk) · [Instalación](docs/instalacion.md) · [Manual de usuario](docs/manual-de-usuario.md) · [Arquitectura](docs/arquitectura.md) · [Créditos](#creditos)
 
 </div>
 
@@ -51,7 +52,13 @@
 
 Español, English, Norsk (Bokmål), Français, Deutsch, Italiano, Português, 普通话 (Mandarín con pinyin), Runa Simi (Quechua Cusco-Collao), 한국어, 日本語 y हिन्दी.
 
-## Instalación rápida (Android)
+## Descarga directa del APK
+
+Puedes descargar la última versión oficial lista para instalar en tu dispositivo Android desde los lanzamientos del repositorio:
+
+👉 **[Descargar Yamy v0.1.0 (APK)](https://github.com/KelmerOC/Yamy/releases/download/v0.1.0/yamy-v0.1.0.apk)** *(63.5 MB, Android 8.0 o superior)*
+
+## Instalación rápida (Compilación desde fuente)
 
 Necesitas JDK 17 o superior, Android SDK 36 y un teléfono con Android 8.0 o superior.
 
@@ -72,7 +79,7 @@ La guía completa de instalación está en [docs/instalacion.md](docs/instalacio
 Yamy/
 ├── apps/
 │   ├── android/        Aplicación nativa Android (Kotlin, Jetpack Compose)
-│   └── ios/            Cliente nativo iOS (Swift, SwiftUI)
+│   └── ios/            Lógica y paquete Swift Core compartido (experimental)
 ├── services/
 │   └── api/            Backend de Yamy (Node.js, TypeScript, Fastify, PostgreSQL)
 ├── shared/             Contratos JSON Schema y fixtures multiplataforma
