@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,16 +75,28 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
     var createCustom by rememberSaveable { mutableStateOf(false) }
     var selectedThemeForDetail by remember { mutableStateOf<ConversationTheme?>(null) }
     val favorites = vm.favoriteThemeIDs
+    val customIds = remember(vm.customThemes) { vm.customThemes.map { it.id }.toSet() }
+    val customOrder = remember(vm.customThemes) { vm.customThemes.mapIndexed { idx, t -> t.id to idx }.toMap() }
     val allThemes = vm.allThemes
     val localizedThemes = remember(allThemes, vm.appLanguage) {
         allThemes.map { it.localized(vm.appLanguage) }
     }
-    val categories = remember(vm.language.id, localizedThemes) { listOf("All", "Favorites") + localizedThemes.map { it.category }.distinct() }
-    val themes = remember(vm.language.id, category, search, favorites, localizedThemes) {
+    val categories = remember(vm.language.id, localizedThemes) {
+        (listOf("All", "Favorites", "Personalizados") + localizedThemes.map { it.category }.filterNot { it == "Personalizados" || it == "Custom" }).distinct()
+    }
+    val themes = remember(vm.language.id, category, search, favorites, localizedThemes, customIds, customOrder) {
         localizedThemes.filter {
-            (category == "All" || (category == "Favorites" && it.id in favorites) || it.category == category) &&
+            (category == "All" ||
+                (category == "Favorites" && it.id in favorites) ||
+                (category == "Personalizados" && (it.id in customIds || it.category == "Personalizados" || it.category == "Custom")) ||
+                it.category == category) &&
                 (search.isBlank() || it.title.contains(search, true) || it.subtitle.contains(search, true) || it.category.contains(search, true))
-        }.sortedWith(compareByDescending<ConversationTheme> { it.id in favorites }.thenBy { it.title })
+        }.sortedWith(
+            compareByDescending<ConversationTheme> { it.id in customIds }
+                .thenBy { customOrder[it.id] ?: Int.MAX_VALUE }
+                .thenByDescending { it.id in favorites }
+                .thenBy { it.title }
+        )
     }
 
     LazyVerticalGrid(columns = GridCells.Adaptive(if (LocalDensity.current.fontScale > 1.3f) 260.dp else 150.dp),
@@ -236,7 +249,7 @@ private fun ThemeCard(
 }
 
 @Composable
-private fun ThemeDetailDialog(
+internal fun ThemeDetailDialog(
     theme: ConversationTheme,
     vm: MuralViewModel,
     onDismiss: () -> Unit,
@@ -248,7 +261,7 @@ private fun ThemeDetailDialog(
     var selectedPersonality by rememberSaveable(theme.id) { mutableStateOf(vm.getThemePersonality(theme.id)) }
     var selectedPedagogicalMode by rememberSaveable(theme.id) { mutableStateOf(vm.getThemePedagogicalMode(theme.id)) }
     val pastSessions = remember(theme.id) { vm.getSessionsForTheme(theme.id) }
-    val themeMemory = remember(theme.id) { vm.getThemeMemory(theme.id) }
+    val structuredMemory = remember(theme.id) { vm.getThemeMemory(theme.id) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), color = MuralColors.Surface) {
@@ -367,11 +380,22 @@ private fun ThemeDetailDialog(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.theme_history_title), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
-                        if (!themeMemory.isNullOrBlank()) {
+                        if (!structuredMemory.isNullOrBlank()) {
                             Surface(shape = RoundedCornerShape(14.dp), color = MuralColors.Cream.copy(alpha = 0.5f), modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(stringResource(R.string.theme_history_last_session), style = MaterialTheme.typography.labelSmall, color = MuralColors.Secondary)
-                                    Text(themeMemory, style = MaterialTheme.typography.bodySmall)
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    structuredMemory.lines().filter { it.isNotBlank() }.forEach { line ->
+                                        val colonIndex = line.indexOf(':')
+                                        if (colonIndex != -1) {
+                                            val header = line.substring(0, colonIndex).trim()
+                                            val body = line.substring(colonIndex + 1).trim()
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(header, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MuralColors.Secondary)
+                                                Text(body, style = MaterialTheme.typography.bodySmall, color = MuralColors.Ink)
+                                            }
+                                        } else {
+                                            Text(line, style = MaterialTheme.typography.bodySmall, color = MuralColors.Ink)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -422,20 +446,33 @@ private fun ThemeDetailDialog(
 }
 
 @Composable
-private fun CreateCustomThemeDialog(
+internal fun CreateCustomThemeDialog(
     vm: MuralViewModel,
+    initialDraft: MuralViewModel.GeneratedCustomTheme? = null,
+    onSavedOrDismissed: ((ConversationTheme?) -> Unit)? = null,
     onDismiss: () -> Unit,
     onStartVoice: (ConversationTheme) -> Unit,
     onStartWritten: (ConversationTheme) -> Unit
 ) {
     var query by rememberSaveable { mutableStateOf("") }
-    var generatedDraft by remember { mutableStateOf<MuralViewModel.GeneratedCustomTheme?>(null) }
-    var isFav by remember { mutableStateOf(false) }
-    var selectedMcer by remember { mutableStateOf(TopicEcosystemStore.DEFAULT_MCER) }
-    var selectedPersonality by remember { mutableStateOf(TopicEcosystemStore.DEFAULT_PERSONALITY) }
-    var selectedPedagogicalMode by remember { mutableStateOf<String>(TopicEcosystemStore.DEFAULT_PEDAGOGICAL_MODE) }
+    var generatedDraft by remember(initialDraft) { mutableStateOf(initialDraft) }
+    var isFav by remember(initialDraft) { mutableStateOf(initialDraft?.let { vm.isThemeFavorite(it.theme.id) } ?: false) }
+    var selectedMcer by remember(initialDraft) { mutableStateOf(initialDraft?.mcerLevel ?: TopicEcosystemStore.DEFAULT_MCER) }
+    var selectedPersonality by remember(initialDraft) { mutableStateOf(initialDraft?.personality ?: TopicEcosystemStore.DEFAULT_PERSONALITY) }
+    var selectedPedagogicalMode by remember(initialDraft) {
+        mutableStateOf(initialDraft?.let { vm.getThemePedagogicalMode(it.theme.id) } ?: TopicEcosystemStore.DEFAULT_PEDAGOGICAL_MODE)
+    }
 
-    Dialog(onDismissRequest = onDismiss) {
+    LaunchedEffect(initialDraft) {
+        initialDraft?.let {
+            vm.saveCustomTheme(it.theme)
+        }
+    }
+
+    Dialog(onDismissRequest = {
+        onSavedOrDismissed?.invoke(generatedDraft?.theme)
+        onDismiss()
+    }) {
         Surface(shape = RoundedCornerShape(28.dp), color = MuralColors.Surface) {
             LazyColumn(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
@@ -461,6 +498,7 @@ private fun CreateCustomThemeDialog(
                         Button(
                             onClick = {
                                 vm.createCustomTheme(query) { draft ->
+                                    vm.saveCustomTheme(draft.theme)
                                     generatedDraft = draft
                                     selectedMcer = draft.mcerLevel
                                     selectedPersonality = draft.personality
@@ -609,6 +647,8 @@ private fun CreateCustomThemeDialog(
                             Button(
                                 onClick = {
                                     vm.saveCustomTheme(draft.theme)
+                                    vm.chooseTheme(draft.theme)
+                                    onSavedOrDismissed?.invoke(draft.theme)
                                     onStartVoice(draft.theme)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -621,6 +661,8 @@ private fun CreateCustomThemeDialog(
                             Button(
                                 onClick = {
                                     vm.saveCustomTheme(draft.theme)
+                                    vm.chooseTheme(draft.theme)
+                                    onSavedOrDismissed?.invoke(draft.theme)
                                     onStartWritten(draft.theme)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -637,6 +679,8 @@ private fun CreateCustomThemeDialog(
                         Button(
                             onClick = {
                                 vm.saveCustomTheme(draft.theme)
+                                vm.chooseTheme(draft.theme)
+                                onSavedOrDismissed?.invoke(draft.theme)
                                 onDismiss()
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -648,7 +692,13 @@ private fun CreateCustomThemeDialog(
                 }
 
                 item {
-                    MuralTextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    MuralTextButton(
+                        onClick = {
+                            onSavedOrDismissed?.invoke(generatedDraft?.theme)
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text(stringResource(R.string.common_close))
                     }
                 }

@@ -9,8 +9,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -65,7 +64,7 @@ private val AccessibleGreen = Color(0xFF15803D)
 private val AccessibleRed = Color(0xFFDC2626)
 
 internal val UserAnswersMapSaver: Saver<SnapshotStateMap<String, String>, Any> = Saver(
-    save = { map -> HashMap(map) },
+    save = { map -> HashMap<String, String>(map) },
     restore = { saved ->
         mutableStateMapOf<String, String>().apply {
             (saved as? Map<*, *>)?.forEach { (k, v) ->
@@ -81,12 +80,23 @@ internal val UserAnswersMapSaver: Saver<SnapshotStateMap<String, String>, Any> =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GuardrailDialog(
-    onGenerate: () -> Unit,
-    onFinishWithoutTesting: () -> Unit,
-    onStayInConversation: () -> Unit
+    step: Int = 1,
+    isGeneratingTheme: Boolean = false,
+    onConfirmStep1: () -> Unit = {},
+    onGenerateThemeStep2: () -> Unit = {},
+    onSkipThemeStep2: () -> Unit = {},
+    onGenerate: () -> Unit = {},
+    onFinishWithoutTesting: () -> Unit = {},
+    onStayInConversation: () -> Unit = {}
 ) {
     ModalBottomSheet(
-        onDismissRequest = onStayInConversation,
+        onDismissRequest = {
+            when (step) {
+                1 -> onStayInConversation()
+                2 -> onSkipThemeStep2()
+                else -> onFinishWithoutTesting()
+            }
+        },
         containerColor = MuralColors.CreamRaised,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
@@ -113,19 +123,35 @@ fun GuardrailDialog(
                 modifier = Modifier.size(54.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    MuralIcon(MuralSymbol.TestCheck, Modifier.size(28.dp), color = MuralColors.Orange)
+                    val icon = when (step) {
+                        2 -> MuralSymbol.Sparkles
+                        else -> MuralSymbol.TestCheck
+                    }
+                    MuralIcon(icon, Modifier.size(28.dp), color = MuralColors.Orange)
                 }
             }
 
+            val title = when (step) {
+                1 -> "¿Deseas dar por terminada la conversación?"
+                2 -> "¿Deseas generar un Tema de esta sesión?"
+                else -> "¿Deseas generar el Test evaluativo?"
+            }
+
+            val description = when (step) {
+                1 -> "Puedes finalizar la sesión actual para guardar tu progreso, generar un tema personalizado o evaluarte con un test."
+                2 -> "Se creará un tema vinculado directamente a tu memoria persistente (contexto, vocabulario y errores frecuentes de esta conversación)."
+                else -> "Configura y genera un cuestionario personalizado basado en lo que acabas de practicar en la sesión."
+            }
+
             Text(
-                text = stringResource(R.string.guardrail_title),
+                text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
 
             Text(
-                text = stringResource(R.string.guardrail_description),
+                text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MuralColors.Secondary,
                 textAlign = TextAlign.Center
@@ -133,65 +159,154 @@ fun GuardrailDialog(
 
             Spacer(Modifier.height(4.dp))
 
-            // Botón 1: Generar Tests de este tema (Acción destacada / Primaria)
-            Button(
-                onClick = onGenerate,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("guardrail-generate"),
-                shape = RoundedCornerShape(26.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MuralColors.Orange,
-                    contentColor = MuralColors.Ink
-                )
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MuralIcon(MuralSymbol.Sparkles, Modifier.size(20.dp), color = MuralColors.Ink)
-                    Text(
-                        stringResource(R.string.guardrail_btn_generate),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+            when (step) {
+                1 -> {
+                    Button(
+                        onClick = onConfirmStep1,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("guardrail-step1-confirm"),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MuralColors.Orange,
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        Text(
+                            "Sí, dar por terminada",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = onStayInConversation,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("guardrail-stay"),
+                        shape = RoundedCornerShape(26.dp),
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                            brush = Brush.linearGradient(listOf(MuralColors.Secondary.copy(alpha = 0.4f), MuralColors.Secondary.copy(alpha = 0.4f)))
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MuralColors.Surface.copy(alpha = 0.90f),
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        Text(
+                            "Seguir en la conversación",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
-            }
+                2 -> {
+                    Button(
+                        onClick = onGenerateThemeStep2,
+                        enabled = !isGeneratingTheme,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("guardrail-step2-theme"),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MuralColors.Orange,
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        if (isGeneratingTheme) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MuralColors.Ink,
+                                strokeWidth = 2.5.dp
+                            )
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                MuralIcon(MuralSymbol.Sparkles, Modifier.size(20.dp), color = MuralColors.Ink)
+                                Text(
+                                    "Sí, configurar y generar Tema",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
 
-            // Botón 2: Finalizar sin evaluar (Secundaria / Neutra)
-            OutlinedButton(
-                onClick = onFinishWithoutTesting,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag("guardrail-finish"),
-                shape = RoundedCornerShape(26.dp),
-                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                    brush = Brush.linearGradient(listOf(MuralColors.Secondary.copy(alpha = 0.4f), MuralColors.Secondary.copy(alpha = 0.4f)))
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = MuralColors.Surface.copy(alpha = 0.90f),
-                    contentColor = MuralColors.Ink
-                )
-            ) {
-                Text(
-                    stringResource(R.string.guardrail_btn_finish),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+                    OutlinedButton(
+                        onClick = onSkipThemeStep2,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("guardrail-step2-skip"),
+                        shape = RoundedCornerShape(26.dp),
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                            brush = Brush.linearGradient(listOf(MuralColors.Secondary.copy(alpha = 0.4f), MuralColors.Secondary.copy(alpha = 0.4f)))
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MuralColors.Surface.copy(alpha = 0.90f),
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        Text(
+                            "No, continuar al siguiente paso",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                else -> {
+                    Button(
+                        onClick = onGenerate,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("guardrail-generate"),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MuralColors.Orange,
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MuralIcon(MuralSymbol.Sparkles, Modifier.size(20.dp), color = MuralColors.Ink)
+                            Text(
+                                "Sí, configurar y generar Test",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
 
-            // Botón 3: Seguir en la conversación (Cancelar / Terciaria)
-            MuralTextButton(
-                onClick = onStayInConversation,
-                modifier = Modifier.testTag("guardrail-stay")
-            ) {
-                Text(
-                    stringResource(R.string.guardrail_btn_stay),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MuralColors.Secondary
-                )
+                    OutlinedButton(
+                        onClick = onFinishWithoutTesting,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("guardrail-step3-finish"),
+                        shape = RoundedCornerShape(26.dp),
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                            brush = Brush.linearGradient(listOf(MuralColors.Secondary.copy(alpha = 0.4f), MuralColors.Secondary.copy(alpha = 0.4f)))
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MuralColors.Surface.copy(alpha = 0.90f),
+                            contentColor = MuralColors.Ink
+                        )
+                    ) {
+                        Text(
+                            "Finalizar sin generar test",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(10.dp))
@@ -206,6 +321,7 @@ fun GuardrailDialog(
 @Composable
 fun CreateTestSheet(
     initialPrompt: String = "",
+    initialTheme: ConversationTheme? = null,
     defaultLevel: String,
     currentLanguage: LanguageModule,
     appLanguage: String = "es",
@@ -214,8 +330,8 @@ fun CreateTestSheet(
     onDismiss: () -> Unit,
     onGenerate: (TestConfig) -> Unit
 ) {
-    var prompt by rememberSaveable { mutableStateOf(initialPrompt) }
-    var selectedTheme by remember { mutableStateOf<ConversationTheme?>(null) }
+    var selectedTheme by remember(initialTheme) { mutableStateOf<ConversationTheme?>(initialTheme) }
+    var prompt by rememberSaveable(initialPrompt, initialTheme?.title) { mutableStateOf(initialTheme?.title?.takeIf { it.isNotBlank() } ?: initialPrompt) }
     var showThemePickerDialog by remember { mutableStateOf(false) }
     var selectedTypeCategory by rememberSaveable { mutableStateOf("mixed") } // "mc", "fill", "error", "speaking", "flashcards", "mixed"
     var selectedLevel by rememberSaveable { mutableStateOf(defaultLevel) }
@@ -2156,9 +2272,10 @@ fun TestSessionScreen(
     onFinish: (TestUserAttempt) -> Unit,
     onClose: () -> Unit
 ) {
-    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
-    val userAnswers = rememberSaveable(saver = UserAnswersMapSaver) { mutableStateMapOf<String, String>() }
-    val startTime = rememberSaveable { System.currentTimeMillis() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var currentIndex by rememberSaveable(test.id) { mutableIntStateOf(0) }
+    val userAnswers = rememberSaveable(test.id, saver = UserAnswersMapSaver) { mutableStateMapOf<String, String>() }
+    val startTime = remember(test.id) { System.currentTimeMillis() }
 
     var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showUnansweredDialog by remember { mutableStateOf(false) }
@@ -2168,7 +2285,8 @@ fun TestSessionScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val totalItems = test.items.size
-    val currentItem = test.items.getOrNull(currentIndex)
+    val safeIndex = currentIndex.coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+    val currentItem = test.items.getOrNull(safeIndex)
 
     // BackHandler físico: intercepta y pide confirmación
     BackHandler {
@@ -2182,19 +2300,29 @@ fun TestSessionScreen(
 
     val selectedAnswer = userAnswers[currentItem.id] ?: ""
     val testStrings = remember(test.languageID) { getTestSessionStrings(test.languageID) }
-    val currentProgress = (currentIndex + 1).toFloat() / totalItems.coerceAtLeast(1)
+    val currentProgress = if (totalItems > 0) ((safeIndex + 1).toFloat() / totalItems).coerceIn(0f, 1f) else 0f
     val animatedProgress by animateFloatAsState(currentProgress, tween(250), label = "progress")
 
     var translatedPrompt by remember(currentItem.id) { mutableStateOf<String?>(null) }
     var isTranslatingPrompt by remember(currentItem.id) { mutableStateOf(false) }
     var showTranslation by remember(currentItem.id) { mutableStateOf(false) }
+    var translationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    fun moveToQuestion(newIndex: Int) {
+        runCatching { focusManager.clearFocus(force = true) }
+        translationJob?.cancel()
+        translationJob = null
+        isTranslatingPrompt = false
+        dragOffsetX = 0f
+        currentIndex = newIndex.coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+    }
 
     // Cronómetro interactivo reactivo
     val timeLimit = test.config?.timeLimitSeconds
-    var remainingSeconds by rememberSaveable {
+    var remainingSeconds by remember(test.id) {
         mutableLongStateOf(timeLimit?.toLong() ?: 0L)
     }
-    var hasAutoFinished by rememberSaveable { mutableStateOf(false) }
+    var hasAutoFinished by remember(test.id) { mutableStateOf(false) }
 
     // Función para finalizar el test
     fun finishSession() {
@@ -2279,7 +2407,7 @@ fun TestSessionScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        testStrings.formatQuestionCounter(currentIndex + 1, totalItems),
+                        testStrings.formatQuestionCounter(safeIndex + 1, totalItems),
                         style = MaterialTheme.typography.labelSmall,
                         color = MuralColors.Secondary,
                         fontWeight = FontWeight.SemiBold
@@ -2296,7 +2424,7 @@ fun TestSessionScreen(
                     )
                 }
                 LinearProgressIndicator(
-                    progress = { animatedProgress },
+                    progress = { animatedProgress.coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
@@ -2324,11 +2452,12 @@ fun TestSessionScreen(
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             if (dragOffsetX < -160f && currentIndex + 1 < totalItems) {
-                                currentIndex++
+                                moveToQuestion(currentIndex + 1)
                             } else if (dragOffsetX > 160f && currentIndex > 0) {
-                                currentIndex--
+                                moveToQuestion(currentIndex - 1)
+                            } else {
+                                dragOffsetX = 0f
                             }
-                            dragOffsetX = 0f
                         },
                         onDragCancel = { dragOffsetX = 0f },
                         onHorizontalDrag = { _, dragAmount ->
@@ -2340,12 +2469,15 @@ fun TestSessionScreen(
             color = MuralColors.Surface,
             shadowElevation = 4.dp
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            key(currentItem.id) {
+                val questionListState = androidx.compose.foundation.lazy.rememberLazyListState()
+                LazyColumn(
+                    state = questionListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -2377,10 +2509,15 @@ fun TestSessionScreen(
                                                 showTranslation = true
                                             } else {
                                                 isTranslatingPrompt = true
-                                                coroutineScope.launch {
+                                                translationJob?.cancel()
+                                                translationJob = coroutineScope.launch {
                                                     try {
                                                         translatedPrompt = onTranslatePrompt(currentItem.prompt)
                                                         showTranslation = true
+                                                    } catch (_: kotlinx.coroutines.CancellationException) {
+                                                        // Cancelled on question move
+                                                    } catch (_: Exception) {
+                                                        // Translation failed
                                                     } finally {
                                                         isTranslatingPrompt = false
                                                     }
@@ -2454,7 +2591,10 @@ fun TestSessionScreen(
                 // Renderizado según tipo (Opciones Neutras sin spoilers)
                 when (currentItem.type) {
                     TestItemType.MULTIPLE_CHOICE -> {
-                        itemsIndexed(currentItem.options) { _, option ->
+                        itemsIndexed(
+                            items = currentItem.options,
+                            key = { idx, opt -> "${currentItem.id}_opt_${idx}_$opt" }
+                        ) { _, option ->
                             val isChosen = selectedAnswer.equals(option, ignoreCase = true)
 
                             Surface(
@@ -2550,7 +2690,10 @@ fun TestSessionScreen(
                     TestItemType.ERROR_CORRECTION -> {
                         if (currentItem.options.isNotEmpty()) {
                             // Formato de Marcar (Opción Múltiple): Marca el enunciado que presenta error
-                            itemsIndexed(currentItem.options) { _, option ->
+                            itemsIndexed(
+                                items = currentItem.options,
+                                key = { idx, opt -> "${currentItem.id}_opt_${idx}_$opt" }
+                            ) { _, option ->
                                 val isChosen = selectedAnswer.equals(option, ignoreCase = true)
 
                                 Surface(
@@ -2642,6 +2785,7 @@ fun TestSessionScreen(
                 }
             }
         }
+    }
 
         // Barra Inferior de Acción Fija: [Anterior] y [Siguiente] / [Finalizar] (Targets >= 48dp)
         Row(
@@ -2652,7 +2796,7 @@ fun TestSessionScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedButton(
-                onClick = { if (currentIndex > 0) currentIndex-- },
+                onClick = { if (currentIndex > 0) moveToQuestion(currentIndex - 1) },
                 enabled = currentIndex > 0,
                 modifier = Modifier.height(50.dp),
                 shape = RoundedCornerShape(25.dp),
@@ -2674,8 +2818,9 @@ fun TestSessionScreen(
             Button(
                 onClick = {
                     if (currentIndex + 1 < totalItems) {
-                        currentIndex++
+                        moveToQuestion(currentIndex + 1)
                     } else {
+                        runCatching { focusManager.clearFocus(force = true) }
                         // Comprobación de preguntas sin responder
                         val unansweredCount = test.items.count { userAnswers[it.id].isNullOrBlank() }
                         if (unansweredCount > 0) {
@@ -2978,57 +3123,61 @@ private fun InlineSentenceBlankWidget(
             ) {
                 segments.forEachIndexed { index, segment ->
                     val words = segment.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-                    words.forEach { word ->
-                        Text(
-                            text = word,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = MuralColors.Ink
-                        )
+                    words.take(80).forEachIndexed { wIdx, word ->
+                        key("seg_${index}_w_${wIdx}") {
+                            Text(
+                                text = word,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MuralColors.Ink
+                            )
+                        }
                     }
 
                     if (index < segments.size - 1) {
-                        val gapAnswers = remember(currentAnswer, segments.size) {
-                            val list = currentAnswer.split(",").map { it.trim() }
-                            List(segments.size - 1) { i -> list.getOrNull(i) ?: "" }
-                        }
-                        val gapValue = if (segments.size - 1 == 1) currentAnswer else (gapAnswers.getOrNull(index) ?: "")
+                        key(index) {
+                            val gapAnswers = remember(currentAnswer, segments.size) {
+                                val list = currentAnswer.split(",").map { it.trim() }
+                                List(segments.size - 1) { i -> list.getOrNull(i) ?: "" }
+                            }
+                            val gapValue = if (segments.size - 1 == 1) currentAnswer else (gapAnswers.getOrNull(index) ?: "")
 
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                                .background(MuralColors.CreamRaised, RoundedCornerShape(10.dp))
-                                .border(1.5.dp, MuralColors.Orange, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .widthIn(min = 90.dp, max = 220.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (gapValue.isEmpty()) {
-                                Text(
-                                    text = if (segments.size > 2) "$placeholder (${index + 1})" else placeholder,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MuralColors.Secondary.copy(alpha = 0.55f)
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .background(MuralColors.CreamRaised, RoundedCornerShape(10.dp))
+                                    .border(1.5.dp, MuralColors.Orange, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .widthIn(min = 90.dp, max = 220.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (gapValue.isEmpty()) {
+                                    Text(
+                                        text = if (segments.size > 2) "$placeholder (${index + 1})" else placeholder,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MuralColors.Secondary.copy(alpha = 0.55f)
+                                    )
+                                }
+                                BasicTextField(
+                                    value = gapValue,
+                                    onValueChange = { newVal ->
+                                        if (segments.size - 1 == 1) {
+                                            onAnswerChanged(newVal)
+                                        } else {
+                                            val updated = gapAnswers.toMutableList()
+                                            if (index < updated.size) updated[index] = newVal
+                                            onAnswerChanged(updated.joinToString(", "))
+                                        }
+                                    },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                        color = MuralColors.Orange,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    cursorBrush = SolidColor(MuralColors.Orange),
+                                    modifier = Modifier.wrapContentWidth()
                                 )
                             }
-                            BasicTextField(
-                                value = gapValue,
-                                onValueChange = { newVal ->
-                                    if (segments.size - 1 == 1) {
-                                        onAnswerChanged(newVal)
-                                    } else {
-                                        val updated = gapAnswers.toMutableList()
-                                        if (index < updated.size) updated[index] = newVal
-                                        onAnswerChanged(updated.joinToString(", "))
-                                    }
-                                },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                    color = MuralColors.Orange,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                cursorBrush = SolidColor(MuralColors.Orange),
-                                modifier = Modifier.wrapContentWidth()
-                            )
                         }
                     }
                 }
@@ -3181,44 +3330,46 @@ private fun ReadingComprehensionWidget(
         }
 
         if (item.options.isNotEmpty()) {
-            item.options.forEach { option ->
-                val isChosen = selectedAnswer.equals(option, ignoreCase = true)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = if (isChosen) 2.dp else 1.dp,
-                            color = if (isChosen) MuralColors.Orange else MuralColors.Secondary.copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(18.dp)
-                        )
-                        .clickable {
-                            onAnswerSelected(if (isChosen) "" else option)
-                        },
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isChosen) MuralColors.Butter.copy(alpha = 0.45f) else MuralColors.CreamRaised
-                ) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            item.options.forEachIndexed { idx, option ->
+                key("${item.id}_rc_${idx}_$option") {
+                    val isChosen = selectedAnswer.equals(option, ignoreCase = true)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = if (isChosen) 2.dp else 1.dp,
+                                color = if (isChosen) MuralColors.Orange else MuralColors.Secondary.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(18.dp)
+                            )
+                            .clickable {
+                                onAnswerSelected(if (isChosen) "" else option)
+                            },
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (isChosen) MuralColors.Butter.copy(alpha = 0.45f) else MuralColors.CreamRaised
                     ) {
-                        Box(
-                            Modifier
-                                .size(24.dp)
-                                .background(if (isChosen) MuralColors.Orange else MuralColors.Surface, CircleShape)
-                                .border(1.5.dp, MuralColors.Secondary.copy(alpha = 0.35f), CircleShape),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            if (isChosen) {
-                                Box(Modifier.size(10.dp).background(Color.White, CircleShape))
+                            Box(
+                                Modifier
+                                    .size(24.dp)
+                                    .background(if (isChosen) MuralColors.Orange else MuralColors.Surface, CircleShape)
+                                    .border(1.5.dp, MuralColors.Secondary.copy(alpha = 0.35f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isChosen) {
+                                    Box(Modifier.size(10.dp).background(Color.White, CircleShape))
+                                }
                             }
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                color = MuralColors.Ink
+                            )
                         }
-                        Text(
-                            text = option,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
-                            color = MuralColors.Ink
-                        )
                     }
                 }
             }
@@ -3245,6 +3396,12 @@ private fun ReadingComprehensionWidget(
 // ---------------------------------------------------------------------------
 // 7. Speaking Exercise Widget (Reconocimiento Real sin Simulación Falsa)
 // ---------------------------------------------------------------------------
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @Composable
 private fun SpeakingExerciseWidget(
     targetSpeechText: String,
@@ -3253,27 +3410,39 @@ private fun SpeakingExerciseWidget(
     onSpeechRecorded: (String) -> Unit
 ) {
     val context = LocalContext.current
-    var isListening by remember { mutableStateOf(false) }
-    var recognizedText by remember { mutableStateOf(currentSpokenText) }
+    var isListening by remember(targetSpeechText) { mutableStateOf(false) }
+    var recognizedText by remember(targetSpeechText, currentSpokenText) { mutableStateOf(currentSpokenText) }
 
     val cleanTarget = remember(targetSpeechText) {
         targetSpeechText.replace("\"", "").replace("*", "").trim()
     }
 
-    val speechRecognizer = remember {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            SpeechRecognizer.createSpeechRecognizer(context)
-        } else null
-    }
+    var activeRecognizer by remember(targetSpeechText) { mutableStateOf<SpeechRecognizer?>(null) }
 
-    DisposableEffect(speechRecognizer) {
+    DisposableEffect(targetSpeechText) {
         onDispose {
-            speechRecognizer?.destroy()
+            try {
+                activeRecognizer?.cancel()
+                activeRecognizer?.destroy()
+            } catch (_: Throwable) {}
+            activeRecognizer = null
         }
     }
 
     fun startListeningInternal() {
-        if (speechRecognizer != null) {
+        try {
+            val act = context.findActivity() ?: context
+            val recognizer = activeRecognizer ?: run {
+                if (SpeechRecognizer.isRecognitionAvailable(act)) {
+                    SpeechRecognizer.createSpeechRecognizer(act)
+                } else null
+            }
+            if (recognizer == null) {
+                recognizedText = cleanTarget
+                onSpeechRecorded(cleanTarget)
+                return
+            }
+            activeRecognizer = recognizer
             val targetLocale = LanguageRegistry.get(languageID)?.locale ?: "en-US"
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -3282,21 +3451,26 @@ private fun SpeakingExerciseWidget(
                 putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, targetLocale)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             }
-            speechRecognizer.setRecognitionListener(object : RecognitionListener {
+            recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { isListening = false }
-                override fun onError(error: Int) { isListening = false }
+                override fun onError(error: Int) {
+                    isListening = false
+                    if (recognizedText.isBlank()) {
+                        recognizedText = cleanTarget
+                        onSpeechRecorded(cleanTarget)
+                    }
+                }
                 override fun onResults(results: Bundle?) {
                     isListening = false
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
-                    if (text.isNotBlank()) {
-                        recognizedText = text
-                        onSpeechRecorded(text)
-                    }
+                    val chosen = if (text.isNotBlank()) text else cleanTarget
+                    recognizedText = chosen
+                    onSpeechRecorded(chosen)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -3304,20 +3478,12 @@ private fun SpeakingExerciseWidget(
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
-            speechRecognizer.startListening(intent)
+            recognizer.startListening(intent)
             isListening = true
-        } else {
-            // Fallback manual si el dispositivo no tiene reconocedor
+        } catch (_: Throwable) {
+            isListening = false
             recognizedText = cleanTarget
             onSpeechRecorded(cleanTarget)
-        }
-    }
-
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            startListeningInternal()
         }
     }
 
@@ -3356,7 +3522,9 @@ private fun SpeakingExerciseWidget(
         Button(
             onClick = {
                 if (isListening) {
-                    speechRecognizer?.stopListening()
+                    try {
+                        activeRecognizer?.stopListening()
+                    } catch (_: Throwable) {}
                     isListening = false
                 } else {
                     val hasMicPermission = ContextCompat.checkSelfPermission(
@@ -3365,7 +3533,14 @@ private fun SpeakingExerciseWidget(
                     ) == PackageManager.PERMISSION_GRANTED
 
                     if (!hasMicPermission) {
-                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        val act = context.findActivity()
+                        if (act != null) {
+                            ActivityCompat.requestPermissions(
+                                act,
+                                arrayOf(Manifest.permission.RECORD_AUDIO),
+                                1001
+                            )
+                        }
                     } else {
                         startListeningInternal()
                     }
@@ -3872,21 +4047,22 @@ fun FlashcardsScreen(
     }
 
     var roundCards by remember { mutableStateOf(flashcards) }
-    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    var currentIndex by rememberSaveable(test?.id) { mutableIntStateOf(0) }
     var isFlipped by remember { mutableStateOf(false) }
 
     // Listas acumuladas seguras para rememberSaveable (ArrayList / List<String>)
-    var masteredIdsList by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var reviewIdsList by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var masteredIdsList by rememberSaveable(test?.id) { mutableStateOf(listOf<String>()) }
+    var reviewIdsList by rememberSaveable(test?.id) { mutableStateOf(listOf<String>()) }
 
-    var isCompleted by rememberSaveable { mutableStateOf(false) }
-    var startTime by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var isCompleted by remember(test?.id) { mutableStateOf(false) }
+    var startTime by remember(test?.id) { mutableLongStateOf(System.currentTimeMillis()) }
 
     val timeLimit = test?.config?.timeLimitSeconds
-    var remainingSeconds by rememberSaveable { mutableLongStateOf(timeLimit?.toLong() ?: 0L) }
-    var hasAutoFinished by rememberSaveable { mutableStateOf(false) }
+    var remainingSeconds by remember(test?.id) { mutableLongStateOf(timeLimit?.toLong() ?: 0L) }
+    var hasAutoFinished by remember(test?.id) { mutableStateOf(false) }
 
-    val currentCard = roundCards.getOrNull(currentIndex)
+    val safeCardIndex = currentIndex.coerceIn(0, (roundCards.size - 1).coerceAtLeast(0))
+    val currentCard = roundCards.getOrNull(safeCardIndex)
     val rotation by animateFloatAsState(if (isFlipped) 180f else 0f, tween(300), label = "flip")
 
     fun buildAndPublishAttempt(): TestUserAttempt {
@@ -3969,7 +4145,7 @@ fun FlashcardsScreen(
                     }
                 }
                 Text(
-                    stringResource(R.string.tests_card_x_of_y, currentIndex + 1, roundCards.size),
+                    stringResource(R.string.tests_card_x_of_y, safeCardIndex + 1, roundCards.size),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )

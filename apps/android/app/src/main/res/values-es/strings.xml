@@ -457,6 +457,9 @@
     <string name="tests_type_cloze_bank">Banco de palabras</string>
     <string name="tests_type_reading_comprehension">Comprensión lectora</string>
     <string name="tests_time_expired_notice">¡Tiempo agotado! Evaluando tus respuestas…</string>
+    <string name="tests_empty_items_title">Sin preguntas interactivas</string>
+    <string name="tests_empty_items_desc">Este test no contiene preguntas interactivas disponibles. Puedes practicar con las tarjetas o refrescar las preguntas.</string>
+    <string name="tests_btn_back_to_catalog">Volver al catálogo</string>
     <string name="tests_cloze_bank_instruction">Selecciona palabras del banco para completar los espacios:</string>
     <string name="tests_cloze_bank_tap_to_remove">Toca una palabra colocada para devolverla</string>
     <string name="tests_reading_passage_label">Lectura base</string>

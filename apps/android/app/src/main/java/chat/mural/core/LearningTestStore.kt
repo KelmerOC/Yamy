@@ -25,10 +25,12 @@ class LearningTestStore internal constructor(private val prefs: SharedPreference
     }
 
     fun saveTest(languageID: String, test: LearningTest) {
-        val current = getTests(languageID).filterNot { it.id == test.id }.toMutableList()
-        current.add(0, test) // Prepend so latest test is first
-        val serialized = json.encodeToString(current.take(MAX_STORED_TESTS))
-        prefs.edit().putString(KEY_TESTS_PREFIX + languageID, serialized).apply()
+        runCatching {
+            val current = getTests(languageID).filterNot { it.id == test.id }.toMutableList()
+            current.add(0, test) // Prepend so latest test is first
+            val serialized = json.encodeToString(current.take(MAX_STORED_TESTS))
+            prefs.edit().putString(KEY_TESTS_PREFIX + languageID, serialized).commit()
+        }
     }
 
     fun upsertTest(test: LearningTest) {
@@ -141,18 +143,20 @@ class LearningTestStore internal constructor(private val prefs: SharedPreference
     }
 
     fun saveAttempt(attempt: TestUserAttempt) {
-        val existing = getAttempts(attempt.testId).filterNot { it.completedAt == attempt.completedAt }.toMutableList()
-        existing.add(0, attempt)
-        val history = existing.take(MAX_STORED_ATTEMPTS)
+        runCatching {
+            val existing = getAttempts(attempt.testId).filterNot { it.completedAt == attempt.completedAt }.toMutableList()
+            existing.add(0, attempt)
+            val history = existing.take(MAX_STORED_ATTEMPTS)
 
-        val serializedHistory = json.encodeToString(history)
-        val serializedLatest = json.encodeToString(attempt)
+            val serializedHistory = json.encodeToString(history)
+            val serializedLatest = json.encodeToString(attempt)
 
-        prefs.edit()
-            .putString(KEY_ATTEMPTS_HISTORY_PREFIX + attempt.testId, serializedHistory)
-            .putString(KEY_ATTEMPT_PREFIX + attempt.testId, serializedLatest)
-            .remove(KEY_DRAFT_PREFIX + attempt.testId) // clear draft on completion
-            .apply()
+            prefs.edit()
+                .putString(KEY_ATTEMPTS_HISTORY_PREFIX + attempt.testId, serializedHistory)
+                .putString(KEY_ATTEMPT_PREFIX + attempt.testId, serializedLatest)
+                .remove(KEY_DRAFT_PREFIX + attempt.testId) // clear draft on completion
+                .commit()
+        }
     }
 
     fun getAttemptSummary(testId: String): AttemptSummary? {
@@ -188,8 +192,10 @@ class LearningTestStore internal constructor(private val prefs: SharedPreference
     }
 
     fun saveSessionDraft(draft: TestSessionDraft) {
-        val serialized = json.encodeToString(draft)
-        prefs.edit().putString(KEY_DRAFT_PREFIX + draft.testId, serialized).apply()
+        runCatching {
+            val serialized = json.encodeToString(draft)
+            prefs.edit().putString(KEY_DRAFT_PREFIX + draft.testId, serialized).apply()
+        }
     }
 
     fun loadSessionDraft(testId: String): TestSessionDraft? {
@@ -202,7 +208,9 @@ class LearningTestStore internal constructor(private val prefs: SharedPreference
     }
 
     fun clearSessionDraft(testId: String) {
-        prefs.edit().remove(KEY_DRAFT_PREFIX + testId).apply()
+        runCatching {
+            prefs.edit().remove(KEY_DRAFT_PREFIX + testId).apply()
+        }
     }
 
     fun getActivityDaysThisWeek(): Int {

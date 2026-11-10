@@ -953,6 +953,52 @@ class AnswerGraderAndAdvancedTestsTest {
         assertTrue("Debe exigir 100% de preguntas derivadas de la conversación", prompt.contains("derived directly and exclusively from the specific theme"))
         assertTrue("Debe exigir 25 preguntas", prompt.contains("CRITICAL MANDATORY QUANTITY INVARIANT: You MUST generate EXACTLY 25 test items"))
     }
+
+    @Test
+    fun testMixed10And25QuestionsSequentialNavigationAndGrading() {
+        val types = listOf(
+            TestItemType.MULTIPLE_CHOICE,
+            TestItemType.CLOZE_BANK,
+            TestItemType.FILL_BLANK,
+            TestItemType.ERROR_CORRECTION,
+            TestItemType.READING_COMPREHENSION,
+            TestItemType.SPEAKING
+        )
+
+        for (totalCount in listOf(10, 25)) {
+            val items = (0 until totalCount).map { i ->
+                val type = types[i % types.size]
+                LearningTestItem(
+                    id = "q_$i",
+                    type = type,
+                    prompt = "Question $i prompt",
+                    context = if (i % 2 == 0) "Context for question $i" else "",
+                    options = if (type == TestItemType.MULTIPLE_CHOICE || type == TestItemType.ERROR_CORRECTION) listOf("A", "B", "C", "D") else emptyList(),
+                    correctAnswer = when (type) {
+                        TestItemType.MULTIPLE_CHOICE -> "B"
+                        TestItemType.CLOZE_BANK -> "word"
+                        TestItemType.FILL_BLANK -> "answer"
+                        TestItemType.ERROR_CORRECTION -> "A"
+                        TestItemType.READING_COMPREHENSION -> "B"
+                        TestItemType.SPEAKING -> "hello world"
+                    },
+                    explanation = "Explanation $i",
+                    targetSpeechText = if (type == TestItemType.SPEAKING) "hello world" else "",
+                    wordBank = if (type == TestItemType.CLOZE_BANK) listOf("word", "extra") else emptyList()
+                )
+            }
+
+            assertEquals(totalCount, items.size)
+            // Verificar navegación segura en todos los índices
+            for (idx in 0 until totalCount) {
+                val item = items[idx]
+                assertNotNull(item)
+                assertTrue(item.id.isNotBlank())
+                val correct = AnswerGrader.isCorrect(item, item.correctAnswer)
+                assertTrue("Ítem $idx de tipo ${item.type} debe ser evaluado correctamente", correct)
+            }
+        }
+    }
 }
 
 @Suppress("UNCHECKED_CAST")

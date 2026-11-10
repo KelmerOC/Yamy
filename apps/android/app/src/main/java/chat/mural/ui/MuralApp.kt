@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import chat.mural.MuralViewModel
 import chat.mural.R
 import chat.mural.core.CloudAction
+import chat.mural.core.localized
 import chat.mural.AccountViewModel
 import chat.mural.MinutePurchaseViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -228,7 +229,7 @@ fun MuralApp(
                                                     if (activeTest.items.isEmpty() && activeTest.flashcards.isNotEmpty()) {
                                                         vm.selectActiveFlashcards(activeTest.flashcards)
                                                         inFlashcards = true
-                                                    } else {
+                                                    } else if (activeTest.items.isNotEmpty()) {
                                                         inTestSession = true
                                                     }
                                                 },
@@ -313,19 +314,39 @@ fun MuralApp(
 
             if (vm.showGuardrailDialog) {
                 GuardrailDialog(
-                    onGenerate = {
-                        executeWithConsent {
-                            vm.confirmGuardrailGenerate {
-                                tab = 2
-                            }
-                        }
-                    },
-                    onFinishWithoutTesting = {
-                        vm.confirmGuardrailFinish()
-                    },
-                    onStayInConversation = {
-                        vm.dismissGuardrail()
-                    }
+                    step = vm.guardrailStep,
+                    isGeneratingTheme = vm.postSessionGeneratingTheme || vm.working,
+                    onConfirmStep1 = vm::confirmEndSessionStep1,
+                    onGenerateThemeStep2 = { executeWithConsent { vm.confirmGenerateThemeStep2() } },
+                    onSkipThemeStep2 = vm::skipGenerateThemeStep2,
+                    onGenerate = { executeWithConsent { vm.confirmOpenTestCreatorStep3() } },
+                    onFinishWithoutTesting = vm::confirmGuardrailFinish,
+                    onStayInConversation = vm::dismissGuardrail
+                )
+            }
+
+            if (vm.showPostSessionThemeModal) {
+                CreateCustomThemeDialog(
+                    vm = vm,
+                    initialDraft = vm.postSessionThemeDraft,
+                    onDismiss = { vm.onPostSessionThemeModalClosed(vm.postSessionThemeDraft?.theme) },
+                    onSavedOrDismissed = { theme -> vm.onPostSessionThemeModalClosed(theme) },
+                    onStartVoice = { theme -> vm.onPostSessionThemeModalClosed(theme) },
+                    onStartWritten = { theme -> vm.onPostSessionThemeModalClosed(theme) }
+                )
+            }
+
+            if (vm.showPostSessionTestModal) {
+                CreateTestSheet(
+                    initialPrompt = vm.selectedTheme?.title ?: vm.endedSessionSnapshot?.title ?: "",
+                    initialTheme = vm.selectedTheme,
+                    defaultLevel = vm.currentMcerLevel,
+                    currentLanguage = vm.language,
+                    appLanguage = vm.appLanguage,
+                    availableThemes = vm.allThemes.map { it.localized(vm.appLanguage) },
+                    customThemes = vm.customThemes,
+                    onDismiss = vm::dismissPostSessionTestModal,
+                    onGenerate = { config -> executeWithConsent { vm.onPostSessionTestGenerated(config) { tab = 2 } } }
                 )
             }
 

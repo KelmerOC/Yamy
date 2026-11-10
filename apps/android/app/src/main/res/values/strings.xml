@@ -458,6 +458,9 @@
     <string name="tests_type_cloze_bank">Word bank blanks</string>
     <string name="tests_type_reading_comprehension">Reading comprehension</string>
     <string name="tests_time_expired_notice">Time is up! Evaluating your answers…</string>
+    <string name="tests_empty_items_title">No interactive questions</string>
+    <string name="tests_empty_items_desc">This test does not contain interactive questions. You can practice with flashcards or refresh the questions.</string>
+    <string name="tests_btn_back_to_catalog">Back to catalog</string>
     <string name="tests_cloze_bank_instruction">Select words from the bank to fill the gaps:</string>
     <string name="tests_cloze_bank_tap_to_remove">Tap placed word to return it</string>
     <string name="tests_reading_passage_label">Reading passage</string>

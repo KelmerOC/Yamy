@@ -194,6 +194,12 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     val testGenerating: Boolean get() = generatingTestIds.isNotEmpty()
     var attemptSummaries by mutableStateOf<Map<String, AttemptSummary>>(emptyMap()); private set
     var activityDaysThisWeek by mutableStateOf(0); private set
+    var guardrailStep by mutableStateOf(0); private set
+    var endedSessionSnapshot by mutableStateOf<SessionRecord?>(null); private set
+    var postSessionThemeDraft by mutableStateOf<GeneratedCustomTheme?>(null); private set
+    var showPostSessionThemeModal by mutableStateOf(false); private set
+    var showPostSessionTestModal by mutableStateOf(false); private set
+    var postSessionGeneratingTheme by mutableStateOf(false); private set
     var showGuardrailDialog by mutableStateOf(false); private set
     var guardrailPendingAction by mutableStateOf<(() -> Unit)?>(null); private set
 
@@ -253,12 +259,14 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setThemePersonality(themeID: String, personality: String) {
         topicEcosystemStore.setPersonality(themeID, personality)
-        if (state == "active" && voiceSession && selectedTheme?.id == themeID) {
+        if (state == "active" && voiceSession && (selectedTheme?.id == themeID || (selectedTheme == null && themeID == "general"))) {
             command("instructions", TeachingPolicy.personalityGuidance(personality))
         }
     }
 
     fun getThemeMemory(themeID: String): String? = topicEcosystemStore.getThemeMemory(themeID)
+
+    fun getStructuredThemeMemory(themeID: String): ThemePersistentMemory = topicEcosystemStore.getStructuredThemeMemory(themeID)
 
     fun setThemeMemory(themeID: String, memory: String) {
         topicEcosystemStore.setThemeMemory(themeID, memory)
@@ -345,7 +353,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                     ?.takeIf { it in TopicEcosystemStore.PERSONALITIES } ?: TopicEcosystemStore.DEFAULT_PERSONALITY
                 val systemPromptRole = (json?.get("systemPromptRole") as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: situation
 
-                val themeID = "custom_" + UUID.randomUUID().toString().take(8)
+                val existingMatch = customThemes.firstOrNull {
+                    it.title.trim().equals(title.trim(), ignoreCase = true)
+                }
+                val themeID = existingMatch?.id ?: ("custom_" + UUID.randomUUID().toString().take(8))
                 val theme = ConversationTheme(
                     id = themeID,
                     title = title,
@@ -357,10 +368,15 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 topicEcosystemStore.setMcerLevel(themeID, mcer)
                 topicEcosystemStore.setPersonality(themeID, personality)
+                saveCustomTheme(theme)
+                selectedTheme = theme
+                currentMcerLevel = mcer
+                currentPedagogicalMode = topicEcosystemStore.getPedagogicalMode(themeID)
 
                 val draft = GeneratedCustomTheme(theme, mcer, personality, systemPromptRole)
                 onDone?.invoke(draft)
             } catch (e: Exception) {
+                postSessionGeneratingTheme = false
                 if (token == generation) presentError(e, R.string.error_find_topic_failed)
             } finally {
                 if (token == generation) working = false
@@ -400,6 +416,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     fun saveTestAttempt(attempt: TestUserAttempt) {
         learningTestStore.saveAttempt(attempt)
         refreshLearningTests()
+        val test = learningTests.find { it.id == attempt.testId } ?: activeTest?.takeIf { it.id == attempt.testId }
+        val tid = test?.topicId ?: selectedTheme?.id ?: "general"
+        val missed = test?.items?.filter { attempt.correctStatus[it.id] == false }?.map { "${it.prompt.take(45)} (${it.correctAnswer.take(30)})" }?.take(6) ?: emptyList()
+        topicEcosystemStore.recordTestAttemptMemory(tid, attempt.accuracyPercentage, missed)
     }
 
     fun getLatestAttempt(testId: String): TestUserAttempt? {
@@ -411,28 +431,178 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun requestEndSession(onDirectEnd: (() -> Unit)? = null) {
-        end()
-        onDirectEnd?.invoke()
+        if (isRunning || session != null) {
+            endedSessionSnapshot = session?.let(::clone)
+            guardrailPendingAction = onDirectEnd
+            guardrailStep = 1
+            showGuardrailDialog = true
+        } else {
+            onDirectEnd?.invoke()
+        }
     }
 
-    fun requestChooseTheme(theme: ConversationTheme?, onDone: () -> Unit) {
-        chooseTheme(theme)
-        onDone()
+    fun confirmEndSessionStep1() {
+        endedSessionSnapshot = session?.let(::clone) ?: endedSessionSnapshot
+        if (isRunning) end("Ended by you")
+        guardrailStep = 2
+        showGuardrailDialog = true
+    }
+
+    fun dismissGuardrail() {
+        guardrailStep = 0
+        showGuardrailDialog = false
+        guardrailPendingAction = null
+    }
+
+    fun confirmGenerateThemeStep2() {
+        if (postSessionGeneratingTheme) return
+        val snap = endedSessionSnapshot ?: session
+        val transcriptSummary = snap?.passages?.takeLast(8)?.joinToString(" | ") { "${it.speaker.name}: ${it.text.take(60)}" } ?: ""
+        val contextErrors = snap?.assessments?.mapNotNull { it.nextGoal.takeIf { g -> g.isNotBlank() } } ?: emptyList()
+        val contextWords = snap?.assessments?.flatMap { it.words }?.map { it.lemma } ?: emptyList()
+
+        val activeCustomTheme = selectedTheme?.takeIf { it.id.startsWith("custom_") }
+            ?: snap?.themeID?.let { tid -> customThemes.firstOrNull { it.id == tid } }
+
+        if (activeCustomTheme != null) {
+            topicEcosystemStore.recordSessionMemory(
+                activeCustomTheme.id,
+                transcriptSummary.ifBlank { snap?.title ?: "Sesión previa" }.take(200),
+                contextErrors,
+                contextWords
+            )
+            saveCustomTheme(activeCustomTheme)
+            selectedTheme = activeCustomTheme
+            val draft = GeneratedCustomTheme(
+                theme = activeCustomTheme,
+                mcerLevel = topicEcosystemStore.getMcerLevel(activeCustomTheme.id),
+                personality = topicEcosystemStore.getPersonality(activeCustomTheme.id),
+                systemPromptRole = activeCustomTheme.situation
+            )
+            postSessionThemeDraft = draft
+            postSessionGeneratingTheme = false
+            guardrailStep = 0
+            showGuardrailDialog = false
+            showPostSessionThemeModal = true
+            return
+        }
+
+        if (!cloudReady() || working) {
+            val title = snap?.title?.takeIf { it.isNotBlank() } ?: (if (transcriptSummary.isNotBlank()) "Sesión de práctica" else language.defaultTitle)
+            val existing = customThemes.firstOrNull { it.title.trim().equals(title.trim(), ignoreCase = true) }
+            val themeID = existing?.id ?: ("custom_" + UUID.randomUUID().toString().take(8))
+            val theme = ConversationTheme(
+                id = themeID,
+                title = title,
+                subtitle = transcriptSummary.take(45).ifBlank { "Práctica personalizada" },
+                symbol = "sparkles",
+                category = "Personalizados",
+                situation = transcriptSummary.ifBlank { title },
+                colorIndex = 1
+            )
+            val draft = GeneratedCustomTheme(theme, currentMcerLevel, getThemePersonality(selectedTheme?.id ?: "general"), transcriptSummary.ifBlank { title })
+            saveCustomTheme(draft.theme)
+            selectedTheme = draft.theme
+            topicEcosystemStore.recordSessionMemory(
+                draft.theme.id,
+                transcriptSummary.ifBlank { snap?.title ?: "Sesión previa" }.take(200),
+                contextErrors,
+                contextWords
+            )
+            postSessionThemeDraft = draft
+            postSessionGeneratingTheme = false
+            guardrailStep = 0
+            showGuardrailDialog = false
+            showPostSessionThemeModal = true
+            return
+        }
+
+        postSessionGeneratingTheme = true
+        val prompt = if (transcriptSummary.isNotBlank()) {
+            "Conversación sobre: ${snap?.title ?: language.defaultTitle}. Contexto: $transcriptSummary"
+        } else {
+            snap?.title ?: language.defaultTitle
+        }
+
+        createCustomTheme(prompt = prompt) { draft ->
+            topicEcosystemStore.recordSessionMemory(
+                draft.theme.id,
+                transcriptSummary.ifBlank { snap?.title ?: "Sesión previa" }.take(200),
+                contextErrors,
+                contextWords
+            )
+            postSessionThemeDraft = draft
+            postSessionGeneratingTheme = false
+            guardrailStep = 0
+            showGuardrailDialog = false
+            showPostSessionThemeModal = true
+        }
+    }
+
+    fun onPostSessionThemeModalClosed(savedTheme: ConversationTheme? = null) {
+        showPostSessionThemeModal = false
+        postSessionThemeDraft = null
+        postSessionGeneratingTheme = false
+        if (savedTheme != null) {
+            saveCustomTheme(savedTheme)
+            selectedTheme = savedTheme
+        }
+        guardrailStep = 3
+        showGuardrailDialog = true
+    }
+
+    fun skipGenerateThemeStep2() {
+        guardrailStep = 3
+        showGuardrailDialog = true
+    }
+
+    fun confirmOpenTestCreatorStep3() {
+        guardrailStep = 0
+        showGuardrailDialog = false
+        showPostSessionTestModal = true
+    }
+
+    fun onPostSessionTestGenerated(config: TestConfig, onNavigateToTests: () -> Unit) {
+        showPostSessionTestModal = false
+        val ctx = endedSessionSnapshot?.let { TeachingPolicy.context(it) } ?: ""
+        val finalConfig = if (config.topicId == null && selectedTheme != null) config.copy(topicId = selectedTheme?.id) else config
+        generateTest(config = finalConfig, conversationContext = ctx, sessionID = endedSessionSnapshot?.id, onDone = onNavigateToTests)
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        pending?.invoke()
+        onNavigateToTests()
+    }
+
+    fun dismissPostSessionTestModal() {
+        showPostSessionTestModal = false
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        pending?.invoke()
+    }
+
+    fun confirmGuardrailFinish() {
+        guardrailStep = 0
+        showGuardrailDialog = false
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        pending?.invoke()
     }
 
     fun confirmGuardrailGenerate(onOpenTest: () -> Unit) {
-        val sessionToEvaluate = session
-        val currentPassages = sessionToEvaluate?.passages ?: emptyList()
-        val topicTitle = sessionToEvaluate?.title ?: selectedTheme?.title ?: language.defaultTitle
-        val mcerLevel = currentMcerLevel
-        val transcriptContext = currentPassages.takeLast(12).joinToString("\n") { p ->
-            "${p.speaker.name.uppercase()}: ${p.text}"
-        }
+        guardrailStep = 0
         showGuardrailDialog = false
         val pending = guardrailPendingAction
         guardrailPendingAction = null
         if (isRunning) end()
         pending?.invoke()
+
+        val snap = endedSessionSnapshot ?: session
+        val currentPassages = snap?.passages ?: emptyList()
+        val topicTitle = snap?.title ?: selectedTheme?.title ?: language.defaultTitle
+        val mcerLevel = currentMcerLevel
+        val transcriptContext = currentPassages.takeLast(12).joinToString("\n") { p ->
+            "${p.speaker.name.uppercase()}: ${p.text}"
+        }
 
         val config = TestConfig(
             prompt = topicTitle,
@@ -448,21 +618,14 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         generateTest(
             config = config,
             conversationContext = transcriptContext,
+            sessionID = snap?.id,
             onDone = onOpenTest
         )
     }
 
-    fun confirmGuardrailFinish() {
-        showGuardrailDialog = false
-        val pending = guardrailPendingAction
-        guardrailPendingAction = null
-        if (isRunning) end()
-        pending?.invoke()
-    }
-
-    fun dismissGuardrail() {
-        showGuardrailDialog = false
-        guardrailPendingAction = null
+    fun requestChooseTheme(theme: ConversationTheme?, onDone: () -> Unit) {
+        chooseTheme(theme)
+        onDone()
     }
 
     fun generateTest(
@@ -518,8 +681,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                     val ready = parsed.copy(status = TestStatus.READY, createdAt = placeholder.createdAt)
                     learningTestStore.upsertTest(ready)
                     refreshLearningTests()
-                    activeTest = ready
-                    activeFlashcards = ready.flashcards
+                    if (activeTest == null || activeTest?.id == testId || onDone != null) {
+                        activeTest = ready
+                        activeFlashcards = ready.flashcards
+                    }
                     onDone?.invoke()
                 } else {
                     val failed = placeholder.copy(
@@ -730,7 +895,8 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                     wb.distinct().shuffled()
                 } else emptyList()
 
-                val id = (obj["id"] as? JsonPrimitive)?.contentOrNull ?: "q_${index + 1}"
+                val rawId = (obj["id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: "${index + 1}"
+                val id = "q_${index + 1}_$rawId"
                 val item = LearningTestItem(
                     id = id,
                     type = finalType,
@@ -909,6 +1075,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 hasKey = loaded.second
                 credentialProvider = credentials.provider
                 storageReady = true
+                refreshCustomThemes()
                 refreshLearningTests()
                 recoverFinalAssessments()
                 refreshHostedReadiness()
@@ -1020,13 +1187,17 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         finalAssessmentTickets = ConversationProviderPolicy.enqueueRecovery(s, finalAssessmentTickets, hostedSessionIDs)
         archive = archive.copy(sessions = (archive.sessions.filterNot { it.id == s.id } + clone(s)).toMutableList())
         persist()
-        s.themeID?.let { tid ->
-            if (s.endedAt != null || s.passages.size >= 2) {
-                val words = s.assessments.flatMap { it.words }.map { it.lemma }.distinct().take(4)
-                val lastExchange = s.passages.takeLast(2).joinToString(" ") { it.text.take(60) }
-                val summary = if (words.isNotEmpty()) "Practiced ${words.joinToString(", ")}: $lastExchange"
-                              else lastExchange.takeIf { it.isNotBlank() } ?: s.title
-                topicEcosystemStore.setThemeMemory(tid, summary.take(180))
+        val tid = s.themeID ?: "general"
+        if (s.passages.isNotEmpty()) {
+            val words = s.assessments.flatMap { it.words }.map { it.lemma }.distinct().take(8)
+            val errors = s.assessments.mapNotNull { it.nextGoal.takeIf { g -> g.isNotBlank() } }.distinct().take(6)
+            val lastExchange = s.passages.takeLast(2).joinToString(" | ") { "${it.speaker.name}: ${it.text.take(70)}" }
+            val summary = if (words.isNotEmpty()) "Practiced ${words.take(4).joinToString(", ")}: $lastExchange"
+                          else lastExchange.takeIf { it.isNotBlank() } ?: s.title
+            if (s.endedAt != null) {
+                topicEcosystemStore.recordSessionMemory(tid, summary.take(200), errors, words)
+            } else if (s.passages.size >= 2) {
+                topicEcosystemStore.setThemeMemory(tid, summary.take(200))
             }
         }
     }
@@ -1398,13 +1569,18 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         working = true
         actionJob = viewModelScope.launch {
             try {
+                val activeThemeId = selectedTheme?.id ?: "general"
                 val instructions = TeachingPolicy.typedReply(
                     language = language,
                     theme = selectedTheme,
                     mcerLevel = currentMcerLevel,
-                    personality = selectedTheme?.let { getThemePersonality(it.id) },
-                    themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
-                    pedagogicalMode = currentPedagogicalMode
+                    personality = getThemePersonality(activeThemeId),
+                    themeMemory = getThemeMemory(activeThemeId),
+                    pedagogicalMode = currentPedagogicalMode,
+                    interests = archive.preferences.interests,
+                    meaningLanguage = archive.preferences.meaningLanguage,
+                    voiceSpeed = voiceSpeed,
+                    learner = learner
                 ) + "\n" + TeachingPolicy.greeting(language)
 
                 val contextStr = "TARGET LANGUAGE: ${language.id}\n${selectedTheme?.let { "ACTIVE THEME: ${it.title} (ID: ${it.id})\n" } ?: ""}NEW CONVERSATION GREETING"
@@ -1449,6 +1625,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         newSession(true); state = "connecting"
         val id = session!!.id
         val module = language
+        val activeThemeId = selectedTheme?.id ?: "general"
         val instructions = TeachingPolicy.voice(
             language = module,
             learner = learner,
@@ -1457,8 +1634,8 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             meaningLanguage = archive.preferences.meaningLanguage,
             voiceSpeed = voiceSpeed,
             mcerLevel = currentMcerLevel,
-            personality = selectedTheme?.let { getThemePersonality(it.id) },
-            themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
+            personality = getThemePersonality(activeThemeId),
+            themeMemory = getThemeMemory(activeThemeId),
             pedagogicalMode = currentPedagogicalMode
         )
         val history = ConversationHistory.messages(session)
@@ -1535,7 +1712,6 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             if (it.id in hostedSessionIDs) {
                 hostedBindings.ended(it.id); reconcileHostedSessions(); finishHostedAssessment(clone(it))
             } else finalAssessments.submit(clone(it))
-            triggerPostConversationTest(clone(it))
         }
         scheduleTranslation(utteranceComplete = true)
         resetJob = viewModelScope.launch { delay(15000); if (state == "ended") resetConversation() }
@@ -1795,13 +1971,18 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         if (voiceSession) { activity.learnerEngaged(activityNow()); inactivitySeconds = null }; working = true
         actionJob = viewModelScope.launch {
             try {
+                val activeThemeId = selectedTheme?.id ?: "general"
                 val instructions = TeachingPolicy.typedReply(
                     language = language,
                     theme = selectedTheme,
                     mcerLevel = currentMcerLevel,
-                    personality = selectedTheme?.let { getThemePersonality(it.id) },
-                    themeMemory = selectedTheme?.let { getThemeMemory(it.id) },
-                    pedagogicalMode = currentPedagogicalMode
+                    personality = getThemePersonality(activeThemeId),
+                    themeMemory = getThemeMemory(activeThemeId),
+                    pedagogicalMode = currentPedagogicalMode,
+                    interests = archive.preferences.interests,
+                    meaningLanguage = archive.preferences.meaningLanguage,
+                    voiceSpeed = voiceSpeed,
+                    learner = learner
                 )
                 val result = teaching(id, HelperPurpose.TYPED_REPLY, UUID.randomUUID().toString(), instructions, helperContext(draft))
                 if (token != generation || session?.id != id || state != "active") return@launch

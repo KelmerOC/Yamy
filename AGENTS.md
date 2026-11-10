@@ -76,7 +76,7 @@ Las siguientes funcionalidades centrales han sido verificadas al 100% en disposi
 1. **Android (`apps/android`)**:
    - Stack: Kotlin, Jetpack Compose, Coroutines & Flow, AudioRecord / AudioTrack, OkHttp WebSocket.
    - Pruebas unitarias: `./gradlew testDebugUnitTest` en `apps/android`.
-   - Compilar APK: `./gradlew assembleDebug` en `apps/android`.
+   - Compilar y Exportar APK: `./gradlew assembleDebug` en `apps/android` (el artefacto exportado debe ser **Yamy apk** / `yamy.apk`, ya no **Mural debug** / `mural-debug.apk`).
    - Regla de regresión: Todas las pruebas unitarias en `apps/android/app/src/test/` deben aprobar al 100%.
 2. **iOS (`apps/ios`)**:
    - Stack: Swift, SwiftUI, AVFoundation, URLSessionWebSocketTask.
