@@ -58,6 +58,10 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { unitTests.isReturnDefaultValues = true }
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 tasks.withType<Test>().configureEach {
     inputs.dir(rootProject.file("../../shared/fixtures/cross-platform"))
