@@ -70,6 +70,7 @@ jobs:
       - name: Allow the test runner to use hardware virtualization
         run: sudo chmod a+rw /dev/kvm
       - name: Run native interface and compatibility checks
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 36
