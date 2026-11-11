@@ -316,6 +316,8 @@ fun MuralApp(
                 GuardrailDialog(
                     step = vm.guardrailStep,
                     isGeneratingTheme = vm.postSessionGeneratingTheme || vm.working,
+                    showQuickClose = true,
+                    onQuickClose = vm::quickCloseGuardrail,
                     onConfirmStep1 = vm::confirmEndSessionStep1,
                     onGenerateThemeStep2 = { executeWithConsent { vm.confirmGenerateThemeStep2() } },
                     onSkipThemeStep2 = vm::skipGenerateThemeStep2,

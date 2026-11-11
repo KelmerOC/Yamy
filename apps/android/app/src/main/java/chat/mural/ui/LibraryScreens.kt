@@ -78,7 +78,7 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
     val customIds = remember(vm.customThemes) { vm.customThemes.map { it.id }.toSet() }
     val customOrder = remember(vm.customThemes) { vm.customThemes.mapIndexed { idx, t -> t.id to idx }.toMap() }
     val allThemes = vm.allThemes
-    val localizedThemes = remember(allThemes, vm.appLanguage) {
+    val localizedThemes = remember(allThemes, vm.appLanguage, vm.themeTranslationsVersion) {
         allThemes.map { it.localized(vm.appLanguage) }
     }
     val categories = remember(vm.language.id, localizedThemes) {

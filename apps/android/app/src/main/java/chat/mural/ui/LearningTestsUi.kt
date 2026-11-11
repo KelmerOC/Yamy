@@ -82,6 +82,8 @@ internal val UserAnswersMapSaver: Saver<SnapshotStateMap<String, String>, Any> =
 fun GuardrailDialog(
     step: Int = 1,
     isGeneratingTheme: Boolean = false,
+    showQuickClose: Boolean = true,
+    onQuickClose: () -> Unit = {},
     onConfirmStep1: () -> Unit = {},
     onGenerateThemeStep2: () -> Unit = {},
     onSkipThemeStep2: () -> Unit = {},
@@ -109,14 +111,33 @@ fun GuardrailDialog(
             )
         }
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp)
-                .navigationBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Box(Modifier.fillMaxWidth()) {
+            if (showQuickClose) {
+                IconButton(
+                    onClick = onQuickClose,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = 2.dp)
+                        .size(36.dp)
+                        .testTag("guardrail-quick-close")
+                ) {
+                    MuralIcon(
+                        symbol = MuralSymbol.Close,
+                        modifier = Modifier.size(20.dp),
+                        color = MuralColors.Secondary,
+                        description = "Cerrar"
+                    )
+                }
+            }
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+                    .navigationBarsPadding(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             Surface(
                 shape = CircleShape,
                 color = MuralColors.Butter,
@@ -310,6 +331,7 @@ fun GuardrailDialog(
             }
 
             Spacer(Modifier.height(10.dp))
+            }
         }
     }
 }

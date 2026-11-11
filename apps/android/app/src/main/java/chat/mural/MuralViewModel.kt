@@ -203,10 +203,13 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     var showGuardrailDialog by mutableStateOf(false); private set
     var guardrailPendingAction by mutableStateOf<(() -> Unit)?>(null); private set
 
+    var themeTranslationsVersion by mutableStateOf(0); private set
+
     fun selectAppLanguage(languageID: String) {
         val validated = AppLanguages.get(languageID).id
         voiceSettingsStore.appLanguage = validated
         appLanguage = validated
+        ensureCustomThemesTranslated(customThemes, validated)
     }
 
     fun selectVoiceSpeed(speed: String) {
@@ -303,12 +306,57 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
         get() = (customThemes + language.themes.filterNot { it.id == "today" }).distinctBy { it.id }
 
     fun refreshCustomThemes() {
-        customThemes = topicEcosystemStore.getCustomThemes(language.id)
+        customThemes = topicEcosystemStore.getAllCustomThemes()
+        ensureCustomThemesTranslated(customThemes, appLanguage)
     }
 
     fun saveCustomTheme(theme: ConversationTheme) {
         topicEcosystemStore.saveCustomTheme(language.id, theme)
+        topicEcosystemStore.saveCachedThemeTranslation(
+            theme.id,
+            appLanguage,
+            CachedThemeTranslation(theme.title, theme.subtitle, theme.situation)
+        )
         refreshCustomThemes()
+    }
+
+    fun ensureCustomThemesTranslated(themes: List<ConversationTheme>, targetLang: String) {
+        val customOnly = themes.filter { it.id.startsWith("custom_") }
+        if (customOnly.isEmpty() || !cloudReady()) return
+
+        for (theme in customOnly) {
+            val cached = topicEcosystemStore.getCachedThemeTranslation(theme.id, targetLang)
+            if (cached != null) continue
+
+            viewModelScope.launch {
+                try {
+                    val targetName = AppLanguages.get(targetLang).name
+                    val instructions = TeachingPolicy.themeTranslationPrompt(targetLang, targetName)
+                    val input = "Title: ${theme.title}\nSubtitle: ${theme.subtitle}\nSituation: ${theme.situation}"
+                    val result = teaching(
+                        localID = null,
+                        purpose = HelperPurpose.TOPIC,
+                        logicalID = UUID.randomUUID().toString(),
+                        instructions = instructions,
+                        input = input
+                    )
+                    val raw = result.text.trim()
+                    val firstBrace = raw.indexOf('{')
+                    val lastBrace = raw.lastIndexOf('}')
+                    val clean = if (firstBrace in 0 until lastBrace) raw.substring(firstBrace, lastBrace + 1) else raw
+                    val json = Json.parseToJsonElement(clean).jsonObject
+                    val title = json["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: theme.title
+                    val subtitle = json["subtitle"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: theme.subtitle
+                    val situation = json["situation"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: theme.situation
+
+                    val translation = CachedThemeTranslation(title, subtitle, situation)
+                    topicEcosystemStore.saveCachedThemeTranslation(theme.id, targetLang, translation)
+                    themeTranslationsVersion++
+                } catch (e: Exception) {
+                    android.util.Log.w("MuralThemeTrans", "Error translating custom theme ${theme.id} to $targetLang", e)
+                }
+            }
+        }
     }
 
     fun createCustomTheme(prompt: String, onDone: ((GeneratedCustomTheme) -> Unit)? = null) {
@@ -444,8 +492,99 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmEndSessionStep1() {
         endedSessionSnapshot = session?.let(::clone) ?: endedSessionSnapshot
         if (isRunning) end("Ended by you")
-        guardrailStep = 2
+        val activeTheme = selectedTheme ?: endedSessionSnapshot?.themeID?.let { tid ->
+            allThemes.firstOrNull { it.id == tid } ?: customThemes.firstOrNull { it.id == tid }
+        }
+        val hasActiveTheme = activeTheme != null && activeTheme.id != "general" && activeTheme.id != "today"
+        if (hasActiveTheme) {
+            endedSessionSnapshot?.let { snap ->
+                updateThemeCheckpoint(activeTheme.id, snap)
+            }
+            guardrailStep = 3
+        } else {
+            guardrailStep = 2
+        }
         showGuardrailDialog = true
+    }
+
+    fun quickCloseGuardrail() {
+        if (isRunning) end("Ended by user quick close")
+        dismissGuardrail()
+        val pending = guardrailPendingAction
+        guardrailPendingAction = null
+        pending?.invoke()
+    }
+
+    fun updateThemeCheckpoint(themeID: String, snapshot: SessionRecord) {
+        val passages = snapshot.passages
+        if (passages.isEmpty()) return
+
+        val transcriptSummary = passages.takeLast(10).joinToString("\n") { p ->
+            val role = if (p.speaker == Speaker.user) "Learner" else "Tutor"
+            "$role: ${p.text}"
+        }
+        val contextErrors = snapshot.assessments.mapNotNull { it.nextGoal.takeIf { g -> g.isNotBlank() } }
+        val contextWords = snapshot.assessments.flatMap { it.words }.map { it.lemma }
+
+        if (!cloudReady() || working) {
+            topicEcosystemStore.recordSessionMemory(
+                themeID = themeID,
+                sessionSummary = transcriptSummary.take(200).ifBlank { snapshot.title },
+                detectedErrors = contextErrors,
+                practicedLemmas = contextWords
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val existing = topicEcosystemStore.getStructuredThemeMemory(themeID)
+                val instructions = TeachingPolicy.themeCheckpointPrompt(language)
+                val input = """
+THEME ID: $themeID
+PRIOR CHECKPOINT: ${existing.checkpointSummary}
+PREVIOUS TOPICS: ${existing.keyTopicsDiscussed.joinToString(", ")}
+PREVIOUS ERRORS: ${existing.frequentErrors.joinToString(", ")}
+RECENT SESSION TRANSCRIPT:
+$transcriptSummary
+""".trimIndent()
+                val result = teaching(
+                    localID = snapshot.id,
+                    purpose = HelperPurpose.TOPIC,
+                    logicalID = UUID.randomUUID().toString(),
+                    instructions = instructions,
+                    input = input
+                )
+                val raw = result.text.trim()
+                val firstBrace = raw.indexOf('{')
+                val lastBrace = raw.lastIndexOf('}')
+                val clean = if (firstBrace in 0 until lastBrace) raw.substring(firstBrace, lastBrace + 1) else raw
+                val json = Json.parseToJsonElement(clean).jsonObject
+
+                val checkpointSummary = json["checkpointSummary"]?.jsonPrimitive?.contentOrNull ?: ""
+                val lastSessionSummary = json["lastSessionSummary"]?.jsonPrimitive?.contentOrNull ?: ""
+                val keyTopics = json["keyTopicsDiscussed"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+                val errors = (json["frequentErrors"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()) + contextErrors
+                val words = (json["practicedWords"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()) + contextWords
+
+                topicEcosystemStore.recordCheckpointMemory(
+                    themeID = themeID,
+                    checkpointSummary = checkpointSummary,
+                    lastSessionSummary = lastSessionSummary,
+                    keyTopics = keyTopics,
+                    detectedErrors = errors,
+                    practicedWords = words
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("MuralCheckpoint", "Failed to update theme checkpoint via master, using fallback", e)
+                topicEcosystemStore.recordSessionMemory(
+                    themeID = themeID,
+                    sessionSummary = transcriptSummary.take(200).ifBlank { snapshot.title },
+                    detectedErrors = contextErrors,
+                    practicedLemmas = contextWords
+                )
+            }
+        }
     }
 
     fun dismissGuardrail() {
@@ -1058,6 +1197,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     private var generation = 0
 
     init {
+        LocalizedThemes.storeProvider = { topicEcosystemStore }
         guests?.let { controller -> viewModelScope.launch { controller.state.collect { guestState = it } } }
         viewModelScope.launch {
             try {
@@ -1712,6 +1852,10 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             if (it.id in hostedSessionIDs) {
                 hostedBindings.ended(it.id); reconcileHostedSessions(); finishHostedAssessment(clone(it))
             } else finalAssessments.submit(clone(it))
+            val tid = it.themeID ?: selectedTheme?.id
+            if (tid != null && tid != "general" && tid != "today" && it.passages.isNotEmpty()) {
+                updateThemeCheckpoint(tid, clone(it))
+            }
         }
         scheduleTranslation(utteranceComplete = true)
         resetJob = viewModelScope.launch { delay(15000); if (state == "ended") resetConversation() }

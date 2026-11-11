@@ -323,17 +323,28 @@ object LocalizedThemes {
         "qu" to quechua
     )
 
-    fun get(theme: ConversationTheme, appLanguageId: String): ConversationTheme {
+    @Volatile
+    internal var storeProvider: (() -> TopicEcosystemStore?)? = null
+
+    fun get(theme: ConversationTheme, appLanguageId: String, topicStore: TopicEcosystemStore? = null): ConversationTheme {
         val lang = appLanguageId.lowercase()
         val info = catalog[lang]?.get(theme.id)
-        return if (info != null) {
-            theme.copy(title = info.title, subtitle = info.subtitle, situation = info.situation)
-        } else {
-            theme
+        if (info != null) {
+            return theme.copy(title = info.title, subtitle = info.subtitle, situation = info.situation)
         }
+        val store = topicStore ?: storeProvider?.invoke()
+        val cached = store?.getCachedThemeTranslation(theme.id, lang)
+        if (cached != null) {
+            return theme.copy(
+                title = cached.title,
+                subtitle = cached.subtitle,
+                situation = cached.situation.ifBlank { theme.situation }
+            )
+        }
+        return theme
     }
 }
 
-fun ConversationTheme.localized(appLanguageId: String): ConversationTheme =
-    LocalizedThemes.get(this, appLanguageId)
+fun ConversationTheme.localized(appLanguageId: String, topicStore: TopicEcosystemStore? = null): ConversationTheme =
+    LocalizedThemes.get(this, appLanguageId, topicStore)
 

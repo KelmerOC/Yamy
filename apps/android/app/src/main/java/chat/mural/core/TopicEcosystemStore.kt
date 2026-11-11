@@ -12,8 +12,18 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 @Serializable
+data class CachedThemeTranslation(
+    val title: String,
+    val subtitle: String,
+    val situation: String = ""
+)
+
+@Serializable
 data class ThemePersistentMemory(
     val themeId: String,
+    val checkpointSummary: String = "",
+    val keyTopicsDiscussed: List<String> = emptyList(),
+    val lastSessionSummary: String = "",
     val contextHistory: List<String> = emptyList(),
     val frequentErrors: List<String> = emptyList(),
     val practicedWords: List<String> = emptyList(),
@@ -132,6 +142,52 @@ class TopicEcosystemStore internal constructor(private val prefs: SharedPreferen
             .commit()
     }
 
+    fun recordCheckpointMemory(
+        themeID: String,
+        checkpointSummary: String,
+        lastSessionSummary: String = "",
+        keyTopics: List<String> = emptyList(),
+        detectedErrors: List<String> = emptyList(),
+        practicedWords: List<String> = emptyList()
+    ) {
+        val current = getStructuredThemeMemory(themeID)
+        val cleanSummary = checkpointSummary.trim()
+        val cleanLast = lastSessionSummary.trim()
+
+        val newEntries = listOfNotNull(
+            cleanLast.takeIf { it.isNotBlank() },
+            cleanSummary.takeIf { it.isNotBlank() && it != cleanLast }
+        )
+        val updatedHistory = (newEntries + current.contextHistory)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(8)
+
+        val cleanTopics = (keyTopics.map { it.trim() }.filter { it.isNotEmpty() } + current.keyTopicsDiscussed)
+            .distinct()
+            .take(10)
+
+        val cleanErrors = (detectedErrors.map { it.trim() }.filter { it.isNotEmpty() } + current.frequentErrors)
+            .distinct()
+            .take(12)
+
+        val cleanWords = (practicedWords.map { it.trim() }.filter { it.isNotEmpty() } + current.practicedWords)
+            .distinct()
+            .take(25)
+
+        val updated = current.copy(
+            checkpointSummary = cleanSummary.ifBlank { current.checkpointSummary },
+            lastSessionSummary = cleanLast.ifBlank { current.lastSessionSummary },
+            keyTopicsDiscussed = cleanTopics,
+            contextHistory = updatedHistory,
+            frequentErrors = cleanErrors,
+            practicedWords = cleanWords,
+            sessionsCount = current.sessionsCount + 1,
+            lastUpdatedAt = System.currentTimeMillis()
+        )
+        saveStructuredThemeMemory(updated)
+    }
+
     fun recordSessionMemory(
         themeID: String,
         sessionSummary: String,
@@ -187,7 +243,14 @@ class TopicEcosystemStore internal constructor(private val prefs: SharedPreferen
 
     private fun formatSummary(memory: ThemePersistentMemory): String {
         val parts = mutableListOf<String>()
-        if (memory.contextHistory.isNotEmpty()) {
+        val checkpoint = memory.checkpointSummary.ifBlank { memory.lastSessionSummary }
+        if (checkpoint.isNotBlank()) {
+            parts.add("Punto de control previo: $checkpoint")
+        }
+        if (memory.keyTopicsDiscussed.isNotEmpty()) {
+            parts.add("Temas tratados: " + memory.keyTopicsDiscussed.take(5).joinToString(", "))
+        }
+        if (memory.contextHistory.isNotEmpty() && checkpoint.isBlank()) {
             parts.add("Historial reciente: " + memory.contextHistory.take(3).joinToString(" | "))
         }
         if (memory.frequentErrors.isNotEmpty()) {
@@ -229,36 +292,9 @@ class TopicEcosystemStore internal constructor(private val prefs: SharedPreferen
         }
     }
 
-    fun getCustomThemes(languageID: String): List<ConversationTheme> {
-        val jsonStr = prefs.getString(KEY_PREFIX_CUSTOM_THEMES + languageID, null) ?: return emptyList()
-        return parseCustomThemesJson(jsonStr)
-    }
-
-    fun getAllCustomThemes(): List<ConversationTheme> {
-        val allCustom = mutableListOf<ConversationTheme>()
-        val seenIds = mutableSetOf<String>()
-        try {
-            prefs.all.forEach { (key, value) ->
-                if (key.startsWith(KEY_PREFIX_CUSTOM_THEMES) && value is String) {
-                    val parsed = parseCustomThemesJson(value)
-                    for (theme in parsed) {
-                        if (seenIds.add(theme.id)) {
-                            allCustom.add(theme)
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return allCustom
-    }
-
-    fun saveCustomTheme(languageID: String, theme: ConversationTheme) {
-        val current = getCustomThemes(languageID).filterNot {
-            it.id == theme.id || it.title.trim().equals(theme.title.trim(), ignoreCase = true)
-        }.toMutableList()
-        current.add(0, theme)
+    private fun serializeThemes(themes: List<ConversationTheme>): String {
         val jsonArray = buildJsonArray {
-            for (t in current.take(50)) {
+            for (t in themes.take(100)) {
                 add(buildJsonObject {
                     put("id", JsonPrimitive(t.id))
                     put("title", JsonPrimitive(t.title))
@@ -270,7 +306,74 @@ class TopicEcosystemStore internal constructor(private val prefs: SharedPreferen
                 })
             }
         }
-        prefs.edit().putString(KEY_PREFIX_CUSTOM_THEMES + languageID, jsonArray.toString()).commit()
+        return jsonArray.toString()
+    }
+
+    fun getCustomThemes(languageID: String): List<ConversationTheme> {
+        val jsonStr = prefs.getString(KEY_PREFIX_CUSTOM_THEMES + languageID, null) ?: return emptyList()
+        return parseCustomThemesJson(jsonStr)
+    }
+
+    fun getAllCustomThemes(): List<ConversationTheme> {
+        val allCustom = mutableListOf<ConversationTheme>()
+        val seenIds = mutableSetOf<String>()
+        val seenTitles = mutableSetOf<String>()
+
+        fun addIfNew(theme: ConversationTheme) {
+            val normTitle = theme.title.trim().lowercase()
+            if (seenIds.add(theme.id) && (normTitle.isEmpty() || seenTitles.add(normTitle))) {
+                allCustom.add(theme)
+            }
+        }
+
+        try {
+            val globalJson = prefs.getString(KEY_GLOBAL_CUSTOM_THEMES, null)
+            if (!globalJson.isNullOrBlank()) {
+                for (theme in parseCustomThemesJson(globalJson)) {
+                    addIfNew(theme)
+                }
+            }
+            prefs.all.forEach { (key, value) ->
+                if (key.startsWith(KEY_PREFIX_CUSTOM_THEMES) && key != KEY_GLOBAL_CUSTOM_THEMES && value is String) {
+                    val parsed = parseCustomThemesJson(value)
+                    for (theme in parsed) {
+                        addIfNew(theme)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return allCustom
+    }
+
+    fun saveCustomTheme(languageID: String, theme: ConversationTheme) {
+        val currentLang = getCustomThemes(languageID).filterNot {
+            it.id == theme.id || it.title.trim().equals(theme.title.trim(), ignoreCase = true)
+        }.toMutableList()
+        currentLang.add(0, theme)
+        prefs.edit().putString(KEY_PREFIX_CUSTOM_THEMES + languageID, serializeThemes(currentLang)).commit()
+
+        val currentGlobal = getAllCustomThemes().filterNot {
+            it.id == theme.id || it.title.trim().equals(theme.title.trim(), ignoreCase = true)
+        }.toMutableList()
+        currentGlobal.add(0, theme)
+        prefs.edit().putString(KEY_GLOBAL_CUSTOM_THEMES, serializeThemes(currentGlobal)).commit()
+    }
+
+    fun getCachedThemeTranslation(themeID: String, languageID: String): CachedThemeTranslation? {
+        val key = KEY_PREFIX_THEME_TRANSLATION + languageID.lowercase() + "_" + themeID
+        val raw = prefs.getString(key, null) ?: return null
+        return try {
+            json.decodeFromString<CachedThemeTranslation>(raw)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun saveCachedThemeTranslation(themeID: String, languageID: String, translation: CachedThemeTranslation) {
+        val key = KEY_PREFIX_THEME_TRANSLATION + languageID.lowercase() + "_" + themeID
+        try {
+            prefs.edit().putString(key, json.encodeToString(translation)).commit()
+        } catch (_: Exception) {}
     }
 
     var globalPedagogicalMode: String
@@ -302,6 +405,8 @@ class TopicEcosystemStore internal constructor(private val prefs: SharedPreferen
         private const val KEY_PREFIX_MEMORY = "theme_memory_"
         private const val KEY_PREFIX_STRUCTURED_MEMORY = "structured_theme_memory_"
         private const val KEY_PREFIX_CUSTOM_THEMES = "custom_themes_"
+        private const val KEY_GLOBAL_CUSTOM_THEMES = "global_custom_themes"
+        private const val KEY_PREFIX_THEME_TRANSLATION = "theme_trans_"
         private const val KEY_PREFIX_MODE = "pedagogical_mode_"
         private const val KEY_GLOBAL_PEDAGOGICAL_MODE = "global_pedagogical_mode"
         private const val KEY_GLOBAL_MCER = "global_mcer_level"

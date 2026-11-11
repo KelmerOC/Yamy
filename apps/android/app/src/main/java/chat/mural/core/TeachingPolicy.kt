@@ -19,6 +19,7 @@ object TeachingPolicy {
 MANDATORY SCENARIO AND ROLE (Suggested situation: ${it.situation}):
 - Scenario: ${it.situation}
 - Setting: ${it.title} (${it.category})
+- TARGET PRACTICE LANGUAGE ENFORCEMENT: You must conduct the entire roleplay strictly and 100% in ${language.name}. Even if the scenario description was written in another language, translate and adapt the scenario completely into ${language.name}.
 You MUST strictly embody this role. You are an active participant leading this scenario. NEVER break character, never ask to change topic.
 """.trimIndent()
         }
@@ -27,7 +28,16 @@ You MUST strictly embody this role. You are an active participant leading this s
         scenarioContext += mcerGuidance(effectiveMcer)
         scenarioContext += personalityGuidance(effectivePersonality)
         themeMemory?.takeIf { it.isNotBlank() }?.let {
-            scenarioContext += "Theme Context & Memory: The learner has previously practiced this situation. Prior session summary: $it. Welcome the learner back briefly referencing what was discussed last time. Remember the prior context and prioritize practicing and correcting frequent mistakes and recurring difficulties recorded in the theme memory."
+            scenarioContext += """
+Theme Context & Memory - CHECKPOINT & MEMORY OF PRIOR CONVERSATIONS (INVIOLABLE):
+The learner has previously practiced this situation. Prior session summary: $it. Do NOT start from zero as if you've never met or discussed this before.
+Continue naturally from this checkpoint:
+$it
+MANDATORY BEHAVIOR UPON RESUMING:
+- Welcome the learner back naturally referencing what was discussed last time or where the conversation left off.
+- Advance the scenario from that checkpoint while keeping the active role, situation, and CEFR level.
+- Actively reinforce and gently correct frequent mistakes and recurring difficulties recorded in the theme memory.
+""".trimIndent()
         }
         scenarioContext += pedagogicalModeGuidance(pedagogicalMode, language)
 
@@ -482,13 +492,23 @@ Log at most 6 useful words/chunks from the TARGET user passage. sourceIDs must b
 MANDATORY SCENARIO AND ROLE (Suggested situation: ${it.situation}):
 - Scenario: ${it.situation}
 - Setting: ${it.title} (${it.category})
+- TARGET PRACTICE LANGUAGE ENFORCEMENT: You must conduct the entire interaction strictly and 100% in ${language.name}. Adapt the scenario completely into ${language.name}.
 You MUST strictly embody this role. You are an active participant leading this scenario. NEVER break character, never ask to change topic.
 """.trimIndent()
         }
         scenarioContext += mcerGuidance(effectiveMcer)
         scenarioContext += personalityGuidance(effectivePersonality)
         themeMemory?.takeIf { it.isNotBlank() }?.let {
-            scenarioContext += "Theme Context & Memory: Prior session summary: $it. Remember the prior context and prioritize practicing and correcting frequent mistakes and recurring difficulties recorded in the theme memory."
+            scenarioContext += """
+Theme Context & Memory - CHECKPOINT & MEMORY OF PRIOR CONVERSATIONS (INVIOLABLE):
+The learner has previously practiced this situation. Prior session summary: $it. Do NOT start from zero or ask introductory questions as if you've never met.
+Continue naturally from this checkpoint:
+$it
+MANDATORY BEHAVIOR UPON RESUMING:
+- Welcome the learner back briefly referencing what was discussed last time or where the dialogue left off.
+- Advance the scenario from that checkpoint while keeping the active role, situation, and CEFR level.
+- Actively reinforce and gently correct frequent mistakes and recurring difficulties recorded in the theme memory.
+""".trimIndent()
         }
         scenarioContext += pedagogicalModeGuidance(pedagogicalMode, language)
 
@@ -540,6 +560,28 @@ Return ONLY a valid JSON object with these exact keys:
   "systemPromptRole": "Direct instructions for the conversational AI tutor speaking in ${language.name}. Define the tutor's role, attitude, relationship, and how to begin."
 }
 Do NOT search the web. Do NOT include markdown code blocks or additional text. Output raw JSON only."""
+
+    fun themeCheckpointPrompt(language: LanguageModule) = """You are Yamy's pedagogical memory master for ${language.name}.
+Analyze the completed conversation transcript for the active theme.
+Generate an updated checkpoint and persistent memory structure.
+Return ONLY a valid JSON object matching this schema:
+{
+  "checkpointSummary": "A concise 2-3 sentence overview of narrative progress, decisions made, and where the conversation left off so the tutor can resume seamlessly without starting from scratch.",
+  "lastSessionSummary": "A concise 1-2 sentence recap of the key events of this specific session.",
+  "keyTopicsDiscussed": ["topic 1", "topic 2"],
+  "frequentErrors": ["error or grammar point to reinforce"],
+  "practicedWords": ["lemma or key phrase"]
+}
+Do NOT include markdown fences, code blocks, or explanations; output raw JSON only."""
+
+    fun themeTranslationPrompt(targetLanguageId: String, targetLanguageName: String) = """You are Yamy's localization master. Translate the provided conversation theme's title, subtitle, and situation into $targetLanguageName ($targetLanguageId) for the user interface.
+Return ONLY a valid JSON object matching this schema:
+{
+  "title": "Translated concise theme title in $targetLanguageName (max 4 words)",
+  "subtitle": "Translated short subtitle or hook in $targetLanguageName",
+  "situation": "Translated situation roleplay prompt in $targetLanguageName"
+}
+Do NOT include markdown fences or explanations; output raw JSON only."""
 
     fun generateTest(
         language: LanguageModule,
