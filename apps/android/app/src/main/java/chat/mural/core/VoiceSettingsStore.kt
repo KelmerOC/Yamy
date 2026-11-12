@@ -35,8 +35,15 @@ class VoiceSettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_DARK_THEME, value).apply()
         }
 
+    var hasSeenApiKeyGuide: Boolean
+        get() = prefs.getBoolean(KEY_HAS_SEEN_API_KEY_GUIDE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_HAS_SEEN_API_KEY_GUIDE, value).apply()
+        }
+
     companion object {
         private const val PREFERENCES_NAME = "mural_voice_settings"
+        const val KEY_HAS_SEEN_API_KEY_GUIDE = "has_seen_api_key_guide"
         const val KEY_VOICE_SPEED = "voice_speed"
         const val KEY_CLEAN_VOICE = "clean_voice_mode"
         const val KEY_VOICE_TIMBRE = "voice_timbre"

@@ -68,9 +68,10 @@ import chat.mural.core.UsageSummary
 
 @Composable
 fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Unit, onReviewConsent: () -> Unit,
-                   onAccount: (() -> Unit)? = null, onDismiss: () -> Unit = {}) {
-    var advanced by rememberSaveable { mutableStateOf(false) }
-    var keyDialog by rememberSaveable { mutableStateOf(false) }
+                   onAccount: (() -> Unit)? = null, initialOpenKeyDialog: Boolean = false, onDismiss: () -> Unit = {}) {
+    var advanced by rememberSaveable { mutableStateOf(initialOpenKeyDialog) }
+    var keyDialog by rememberSaveable { mutableStateOf(initialOpenKeyDialog) }
+    var showGuide by rememberSaveable { mutableStateOf(false) }
     var deleteKey by rememberSaveable { mutableStateOf(false) }
     var deleteAll by rememberSaveable { mutableStateOf(false) }
     var permissionDetails by rememberSaveable { mutableStateOf(false) }
@@ -214,6 +215,9 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                             val isGemini = !vm.hasKey || vm.credentialProvider == chat.mural.network.CredentialStore.ProviderType.GEMINI
                             SettingsRow(stringResource(if (isGemini) R.string.settings_open_api_keys_gemini else R.string.settings_open_api_keys), tint = MuralColors.Secondary,
                                 onClick = { open(if (isGemini) "https://aistudio.google.com/app/apikey" else "https://platform.openai.com/api-keys") })
+                            SettingsDivider()
+                            SettingsRow(stringResource(R.string.settings_open_api_key_guide), tint = MuralColors.Secondary, chevron = true,
+                                onClick = { showGuide = true })
                             if (vm.hasKey) {
                                 SettingsDivider()
                                 SettingsRow(stringResource(R.string.settings_remove_key), enabled = !vm.isRunning,
@@ -299,6 +303,7 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
     }
 
     if (keyDialog) KeyDialog(vm, onDismiss = { keyDialog = false })
+    if (showGuide) ApiKeyGuideSheet(onDismiss = { showGuide = false }, onConfigureKey = { showGuide = false; keyDialog = true })
     if (notices) NoticesDialog(onDismiss = { notices = false })
     if (history) SettingsHistorySheet(vm, onDismiss = { history = false }, onSelect = { transcript = it }, onDelete = { deleteSession = it })
     if (permissionDetails) AlertDialog(onDismissRequest = { permissionDetails = false },

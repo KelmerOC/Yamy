@@ -1,24 +1,51 @@
 <resources>
-    <string name="guest_unavailable_title">Los minutos gratuitos no están disponibles ahora</string>
-    <string name="guest_unavailable_detail">Cada conversación tiene un coste de IA. Estamos trabajando para financiar más minutos gratuitos y que más personas puedan aprender con Yamy.</string>
+    <!-- Modal Conexión Requerida -->
+    <string name="api_key_required_title">Conexión requerida</string>
+    <string name="api_key_required_detail">Para poder utilizar Yamy y aprender idiomas con IA, necesitas conectarte a tu propia API Key de Google AI Studio. Tus conversaciones y evaluaciones se procesan de forma directa, privada e independiente.</string>
+    <string name="api_key_generate_button">Generar mi API Key</string>
+    <string name="api_key_have_key_button">Ya tengo mi API Key</string>
+    <string name="api_key_dismiss_button">Listo</string>
+    <string name="api_key_close_button">Cerrar</string>
+
+    <!-- Compatibilidad de claves heredadas sin modelo de minutos -->
+    <string name="guest_unavailable_title">Conexión requerida</string>
+    <string name="guest_unavailable_detail">Para poder utilizar Yamy y aprender idiomas con IA, necesitas conectarte a tu propia API Key de Google AI Studio. Tus conversaciones y evaluaciones se procesan de forma directa, privada e independiente.</string>
     <string name="guest_ready_title">Tu próxima conversación te espera</string>
-    <string name="guest_ready_detail">Empieza a hablar. Puedes iniciar sesión cuando quieras para conservar los minutos que te quedan en tu cuenta.</string>
-    <string name="guest_checking_title">Un momento para prepararnos</string>
-    <string name="guest_checking_detail">Estamos comprobando tus minutos de conversación.</string>
-    <string name="guest_retry_title">Vamos a intentarlo de nuevo</string>
-    <string name="guest_retry_detail">No hemos podido consultar tus minutos. Comprueba tu conexión e inténtalo de nuevo. Tu saldo no se ha restablecido.</string>
-    <string name="guest_sign_in_title">Te damos la bienvenida de nuevo</string>
-    <string name="guest_sign_in_detail">Inicia sesión para volver a tus minutos. Este dispositivo ya ha recibido su saldo de bienvenida.</string>
-    <string name="guest_more_title">Que siga la conversación</string>
-    <string name="guest_more_detail">Has agotado tus minutos disponibles. Añade más cuando se activen las compras o usa tu propia clave de API en Ajustes.</string>
-    <string name="guest_link_title">Vamos a reunir tus minutos</string>
-    <string name="guest_link_detail">Aún tenemos que pasar los minutos que te quedan como invitado a tu cuenta. Comprueba de nuevo para terminar. Se sumarán a los minutos que compres.</string>
+    <string name="guest_ready_detail">Empieza a hablar. Tu aprendizaje se queda guardado en este dispositivo.</string>
+    <string name="guest_checking_title">Comprobando conexión</string>
+    <string name="guest_checking_detail">Verificando el estado de conexión con Google Gemini.</string>
+    <string name="guest_retry_title">Reintentar conexión</string>
+    <string name="guest_retry_detail">Comprueba tu conexión a Internet o tu clave de API e inténtalo de nuevo.</string>
+    <string name="guest_sign_in_title">Te damos la bienvenida</string>
+    <string name="guest_sign_in_detail">Conecta tu clave de API personal para continuar.</string>
+    <string name="guest_more_title">Configura tu clave de API</string>
+    <string name="guest_more_detail">Introduce tu propia clave de API de Google AI Studio en Ajustes para continuar conversando sin límites.</string>
+    <string name="guest_link_title">Conectar cuenta</string>
+    <string name="guest_link_detail">Tu aprendizaje se mantiene seguro en este dispositivo.</string>
     <string name="guest_continue">Vamos a hablar</string>
     <string name="guest_sign_in">Continuar con Google</string>
-    <string name="guest_check_again">Comprobar de nuevo</string>
-    <string name="guest_personal_key">Usar mi propia clave de API</string>
-    <string name="guest_purchases_soon">Las compras aún no están disponibles. Puedes usar tu propia clave de API.</string>
-    <string name="guest_account_detail">Inicia sesión para conservar en tu cuenta los minutos que te quedan como invitado. Tu aprendizaje se queda en este dispositivo.</string>
+    <string name="guest_check_again">Reintentar</string>
+    <string name="guest_personal_key">Ya tengo mi API Key</string>
+    <string name="guest_purchases_soon">Conecta tu propia clave de API en Ajustes para disfrutar de conversaciones ilimitadas.</string>
+    <string name="guest_account_detail">Tu aprendizaje se queda guardado en este dispositivo.</string>
     <string name="consent_adult_confirmation">Al continuar, confirmas que tienes 18 años o más.</string>
-    <string name="guest_member_trial_used">Esta cuenta ya ha recibido sus minutos de bienvenida, así que no recibirá un segundo saldo gratuito. El saldo de tu cuenta no ha cambiado.</string>
+    <string name="guest_member_trial_used">Tu aprendizaje se queda en este dispositivo.</string>
+
+    <!-- Manual de Bienvenida Interactivo (First-Time Onboarding Guide) -->
+    <string name="api_key_guide_title">Bienvenido a Yamy</string>
+    <string name="api_key_guide_step1_badge">Paso 1 de 3</string>
+    <string name="api_key_guide_step1_title">Tu tutor privado e independiente</string>
+    <string name="api_key_guide_step1_body">Yamy es una aplicación abierta e independiente. Para conversar y crear ejercicios sin intermediarios ni suscripciones, se conecta directamente a los modelos Gemini mediante tu propia API Key de Google AI Studio.</string>
+    <string name="api_key_guide_step2_badge">Paso 2 de 3</string>
+    <string name="api_key_guide_step2_title">Crea tu API Key gratuita</string>
+    <string name="api_key_guide_step2_body">1. Inicia sesión en Google AI Studio con tu cuenta de Google.\n2. Toca en \"Get API key\" o \"Create API key\".\n3. Copia tu clave generada.</string>
+    <string name="api_key_guide_step2_action">Abrir Google AI Studio</string>
+    <string name="api_key_guide_step3_badge">Paso 3 de 3</string>
+    <string name="api_key_guide_step3_title">Introduce tu clave en Ajustes</string>
+    <string name="api_key_guide_step3_body">Toca en Ajustes (icono de engranaje arriba a la derecha), abre \"Avanzado > Clave de API personal\" y pega tu clave para empezar a practicar.</string>
+    <string name="api_key_guide_step3_action">Configurar mi API Key ahora</string>
+    <string name="api_key_guide_next">Siguiente</string>
+    <string name="api_key_guide_back">Atrás</string>
+    <string name="api_key_guide_skip">Explorar primero</string>
+    <string name="settings_open_api_key_guide">Guía de conexión con Google AI Studio</string>
 </resources>

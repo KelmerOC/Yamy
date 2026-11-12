@@ -1325,7 +1325,7 @@ fun TestsScreen(
 
                     // Botón "Crear test"
                     Button(
-                        onClick = { showCreateSheet = true },
+                        onClick = { if (!vm.hasKey) vm.openMinuteAccess() else showCreateSheet = true },
                         modifier = Modifier
                             .height(48.dp)
                             .testTag("btn-open-create-test"),
@@ -1523,7 +1523,7 @@ fun TestsScreen(
             availableThemes = vm.allThemes.map { it.localized(vm.appLanguage) },
             customThemes = vm.customThemes,
             onDismiss = { showCreateSheet = false },
-            onGenerate = { config ->
+            onGenerate = { config -> if (!vm.hasKey) vm.openMinuteAccess() else
                 executeWithConsent {
                     vm.generateTest(config)
                 }

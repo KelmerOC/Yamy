@@ -111,7 +111,7 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
                 stringResource(R.string.topics_subtitle), Modifier.padding(top = 20.dp, bottom = 10.dp))
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Surface(Modifier.fillMaxWidth().clickable(role = Role.Button) { vm.requestChooseTheme(null) { onChoose() } },
+            Surface(Modifier.fillMaxWidth().clickable(role = Role.Button) { if (!vm.hasKey) vm.openMinuteAccess() else vm.requestChooseTheme(null) { onChoose() } },
                 shape = RoundedCornerShape(26.dp), color = MuralColors.Surface.copy(alpha = .85f)) {
                 Row(Modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MuralIcon(MuralSymbol.Wave)
@@ -122,7 +122,7 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Surface(
-                Modifier.fillMaxWidth().clickable(role = Role.Button) { createCustom = true },
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { if (!vm.hasKey) vm.openMinuteAccess() else createCustom = true },
                 shape = RoundedCornerShape(26.dp),
                 color = if (MuralColors.isDark) MuralColors.Butter else MuralColors.Butter.copy(alpha = .75f),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MuralColors.YellowAccent.copy(alpha = if (MuralColors.isDark) 0.35f else 0.45f))
@@ -156,7 +156,7 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
                 currentMcer = vm.getThemeMcerLevel(theme.id),
                 onToggleFavorite = { vm.toggleFavoriteTheme(theme.id) }
             ) {
-                if (theme.id == "today") createCustom = true
+                if (theme.id == "today") { if (!vm.hasKey) vm.openMinuteAccess() else createCustom = true }
                 else selectedThemeForDetail = theme
             }
         }
@@ -168,13 +168,13 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
         CreateCustomThemeDialog(
             vm = vm,
             onDismiss = { createCustom = false },
-            onStartVoice = { theme ->
+            onStartVoice = { theme -> if (!vm.hasKey) vm.openMinuteAccess() else
                 vm.requestChooseTheme(theme) {
                     createCustom = false
                     onChoose()
                 }
             },
-            onStartWritten = { theme ->
+            onStartWritten = { theme -> if (!vm.hasKey) vm.openMinuteAccess() else
                 vm.requestChooseTheme(theme) {
                     vm.startWritten(theme)
                     createCustom = false
@@ -188,13 +188,14 @@ fun TopicsScreen(vm: MuralViewModel, onChoose: () -> Unit, onCurrentTopic: (Stri
             theme = theme,
             vm = vm,
             onDismiss = { selectedThemeForDetail = null },
-            onStartVoice = {
+            onStartVoice = { if (!vm.hasKey) vm.openMinuteAccess() else
+
                 vm.requestChooseTheme(theme) {
                     selectedThemeForDetail = null
                     onChoose()
                 }
             },
-            onStartWritten = {
+            onStartWritten = { if (!vm.hasKey) vm.openMinuteAccess() else
                 vm.requestChooseTheme(theme) {
                     vm.startWritten(theme)
                     selectedThemeForDetail = null
@@ -497,7 +498,7 @@ internal fun CreateCustomThemeDialog(
                     item {
                         Button(
                             onClick = {
-                                vm.createCustomTheme(query) { draft ->
+                                if (!vm.hasKey) { vm.openMinuteAccess() } else vm.createCustomTheme(query) { draft ->
                                     vm.saveCustomTheme(draft.theme)
                                     generatedDraft = draft
                                     selectedMcer = draft.mcerLevel

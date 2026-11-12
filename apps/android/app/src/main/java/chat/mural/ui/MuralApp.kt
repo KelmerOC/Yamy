@@ -86,6 +86,8 @@ fun MuralApp(
     var showAccount by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showMinutes by rememberSaveable { mutableStateOf(false) }
+    var openKeyDialogInSettings by rememberSaveable { mutableStateOf(false) }
+    var showApiKeyGuide by rememberSaveable { mutableStateOf(false) }
     var inTestSession by rememberSaveable { mutableStateOf(false) }
     var inFlashcards by rememberSaveable { mutableStateOf(false) }
     var currentAttempt by remember { mutableStateOf<chat.mural.core.TestUserAttempt?>(null) }
@@ -100,8 +102,9 @@ fun MuralApp(
     BackHandler(enabled = !isInActiveTestFlow && tab != 0 && !showSettings && !showAccount && !showMinutes) { tab = 0 }
 
     fun perform(action: CloudAction) {
+        if (!vm.hasKey) { vm.openMinuteAccess(); return }
         when (action) {
-            CloudAction.StartVoice -> if (!vm.needsMinuteAccess()) onRequestMicrophone()
+            CloudAction.StartVoice -> onRequestMicrophone()
             CloudAction.StartWritten -> vm.startWritten()
             is CloudAction.SendTyped -> vm.sendTyped(action.text)
             is CloudAction.Lookup -> vm.lookup(action.word, action.sentence)
@@ -110,6 +113,7 @@ fun MuralApp(
         }
     }
     fun withConsent(action: CloudAction) {
+        if (!vm.hasKey) { vm.openMinuteAccess(); return }
         if (vm.archive.preferences.aiConsentVersion == AI_CONSENT_VERSION) perform(action)
         else {
             vm.pendingCloudAction = action
@@ -117,6 +121,7 @@ fun MuralApp(
         }
     }
     fun executeWithConsent(action: () -> Unit) {
+        if (!vm.hasKey) { vm.openMinuteAccess(); return }
         if (vm.archive.preferences.aiConsentVersion == AI_CONSENT_VERSION) action()
         else {
             pendingCustomAction = action
@@ -280,7 +285,7 @@ fun MuralApp(
             }
 
             if (showSettings) {
-                ModalBottomSheet(onDismissRequest = { showSettings = false }, containerColor = MuralColors.Cream,
+                ModalBottomSheet(onDismissRequest = { showSettings = false; openKeyDialogInSettings = false }, containerColor = MuralColors.Cream,
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
                     ProvideAppLocale(vm.appLanguage) {
                         Column(Modifier.fillMaxHeight(.94f)) {
@@ -288,7 +293,7 @@ fun MuralApp(
                                 vm.pendingCloudAction = null; pendingCustomAction = null; showConsent = true
                             }, onAccount = if (account?.configuration != null) ({
                                 account.refresh(); showAccount = true
-                            }) else null, onDismiss = { showSettings = false })
+                            }) else null, initialOpenKeyDialog = openKeyDialogInSettings, onDismiss = { showSettings = false; openKeyDialogInSettings = false })
                         }
                     }
                 }
@@ -352,6 +357,27 @@ fun MuralApp(
                 )
             }
 
+            val shouldShowFirstTimeGuide = prefs.hasOnboarded &&
+                prefs.aiConsentVersion == AI_CONSENT_VERSION &&
+                !vm.hasSeenApiKeyGuide &&
+                !showConsent &&
+                !vm.loadingHistory
+
+            if ((shouldShowFirstTimeGuide || showApiKeyGuide) && !showSettings && !vm.showMinuteAccess) {
+                ApiKeyGuideSheet(
+                    onDismiss = {
+                        vm.markApiKeyGuideSeen()
+                        showApiKeyGuide = false
+                    },
+                    onConfigureKey = {
+                        vm.markApiKeyGuideSeen()
+                        showApiKeyGuide = false
+                        openKeyDialogInSettings = true
+                        showSettings = true
+                    }
+                )
+            }
+
             if (vm.showMinuteAccess && !showAccount && !showSettings && !showMinutes) {
                 val memberState = account?.state?.collectAsStateWithLifecycle()?.value
                 GuestMinutesSheet(vm.guestState, memberState?.signedIn == true,
@@ -366,7 +392,7 @@ fun MuralApp(
                         vm.dismissMinuteAccess(); purchases.refresh(); showMinutes = true
                     }) else null,
                     onRetry = vm::refreshHostedReadiness,
-                    onSettings = { vm.dismissMinuteAccess(); showSettings = true }, onDismiss = vm::dismissMinuteAccess)
+                    onSettings = { vm.dismissMinuteAccess(); openKeyDialogInSettings = true; showSettings = true }, onDismiss = vm::dismissMinuteAccess)
             }
 
             if (showAccount && !showMinutes && account?.configuration != null) {

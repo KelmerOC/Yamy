@@ -24,8 +24,8 @@ android {
         applicationId = "chat.mural.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.1.03"
+        versionCode = 11
+        versionName = "0.1.04"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "MANAGED_API_ORIGIN", buildString(muralConfiguration("mural.apiOrigin")))
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", buildString(muralConfiguration("mural.googleServerClientID")))
@@ -61,6 +61,11 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+    }
+    applicationVariants.all {
+        outputs.all {
+            (this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl)?.outputFileName = "yamy.apk"
+        }
     }
 }
 tasks.withType<Test>().configureEach {

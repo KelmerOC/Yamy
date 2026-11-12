@@ -30,7 +30,7 @@
     <string name="account_privacy">Privacy</string>
     <string name="account_terms">Terms</string>
     <string name="account_sign_out_detail">This signs you out of Yamy on all devices. Your learning data and saved API key stay on this device.</string>
-    <string name="account_delete_detail">Delete your Yamy account and forfeit any unused free minutes? Your learning data stays on this device. Records needed for billing or trial eligibility may be retained.</string>
+    <string name="account_delete_detail">Delete your Yamy account? Your learning data stays on this device.</string>
     <string name="account_request_deletion">Request deletion through support</string>
     <string name="account_deletion_support_detail">Send a deletion request from your Yamy account email. Support will verify ownership and review any balance or pending payment. Your account stays active until deletion is completed.</string>
     <string name="account_deletion_draft_detail">Opening your email app prepares a draft. Send it to submit your request. Do not include passwords, API keys or conversation exports.</string>

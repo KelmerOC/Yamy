@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 
 enum class MuralSymbol { Wave, Themes, Words, Settings, Mic, MicOff, Captions, Transcript, End,
     Keyboard, Sparkles, ArrowUp, ChevronDown, Back, Search, Close, Check, Leaf, ChevronRight, Coffee, Globe, Sun, Moon, Food, Music, Heart, Translate,
-    AcademicCap, ChatBubbles, Trash, TestCheck, Filter, Refresh, Repeat, ChartPie, MoreVertical, Clock, Flame }
+    AcademicCap, ChatBubbles, Trash, TestCheck, Filter, Refresh, Repeat, ChartPie, MoreVertical, Clock, Flame, Key, ExternalLink }
 
 /** Original, consistently weighted artwork; no platform-dependent text glyphs. */
 @Composable
@@ -286,6 +286,28 @@ fun MuralIcon(symbol: MuralSymbol, modifier: Modifier = Modifier, color: Color =
                         close()
                     }
                     if (filled) drawPath(flame, color) else drawPath(flame, color, style = stroke)
+                }
+                MuralSymbol.Key -> {
+                    drawCircle(color, 4.5f, Offset(16f, 8f), style = stroke)
+                    drawCircle(color, 1.5f, Offset(16f, 8f), style = stroke)
+                    line(12.8f, 11.2f, 4.5f, 19.5f)
+                    line(7.5f, 16.5f, 9.5f, 18.5f)
+                    line(5f, 19f, 6.5f, 20.5f)
+                }
+                MuralSymbol.ExternalLink -> {
+                    path {
+                        moveTo(11f, 5f)
+                        lineTo(5.5f, 5f)
+                        quadraticTo(4f, 5f, 4f, 6.5f)
+                        lineTo(4f, 18.5f)
+                        quadraticTo(4f, 20f, 5.5f, 20f)
+                        lineTo(17.5f, 20f)
+                        quadraticTo(19f, 20f, 19f, 18.5f)
+                        lineTo(19f, 13f)
+                    }
+                    line(11f, 13f, 19.5f, 4.5f)
+                    line(14.5f, 4.5f, 19.5f, 4.5f)
+                    line(19.5f, 4.5f, 19.5f, 9.5f)
                 }
             }
         }

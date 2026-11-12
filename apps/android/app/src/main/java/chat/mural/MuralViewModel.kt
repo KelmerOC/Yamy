@@ -183,6 +183,11 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     var voiceTimbre by mutableStateOf(voiceSettingsStore.voiceTimbre); private set
     var appLanguage by mutableStateOf(voiceSettingsStore.appLanguage); private set
     var darkTheme by mutableStateOf(voiceSettingsStore.darkTheme); private set
+    var hasSeenApiKeyGuide by mutableStateOf(voiceSettingsStore.hasSeenApiKeyGuide); private set
+    fun markApiKeyGuideSeen() {
+        voiceSettingsStore.hasSeenApiKeyGuide = true
+        hasSeenApiKeyGuide = true
+    }
     var favoriteThemeIDs by mutableStateOf(topicEcosystemStore.favoriteThemeIDs); private set
     var currentPedagogicalMode by mutableStateOf(topicEcosystemStore.getPedagogicalMode(selectedTheme?.id)); private set
     var currentMcerLevel by mutableStateOf(topicEcosystemStore.getMcerLevel(selectedTheme?.id)); private set
@@ -1203,7 +1208,7 @@ $transcriptSummary
             try {
                 val loaded = withContext(Dispatchers.IO) { repository.load() to credentials.hasKey }
                 archive = loaded.first.archive
-                val providers = providerStore.read(if (loaded.second) ConversationProvider.PERSONAL_KEY else ConversationProvider.HOSTED_MINUTES)
+                val providers = providerStore.read(ConversationProvider.PERSONAL_KEY)
                 hostedSessionIDs = providers.hostedIDs
                 pendingHostedOwnerID = providers.pendingOwnerID
                 accountChangeBlocked = providers.pendingOwnerID != null
@@ -1424,10 +1429,12 @@ $transcriptSummary
         }
     }
     fun dismissMinuteAccess() { showMinuteAccess = false }
+    fun openMinuteAccess() { showMinuteAccess = true }
     fun needsMinuteAccess(): Boolean {
-        if (conversationProvider != ConversationProvider.HOSTED_MINUTES || isRunning) return false
-        if (hostedReadiness.ready && !selectedAccount.busy) return false
-        showMinuteAccess = true; refreshHostedReadiness(); return true
+        if (!hasKey) { showMinuteAccess = true; return true }
+        return false
+
+
     }
     suspend fun prepareGuestCustodyForDeletion(memberID: String) {
         try { guests?.retireAcknowledgedLinkForDeletion(memberID) }

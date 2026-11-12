@@ -30,7 +30,7 @@
     <string name="account_privacy">Privacidad</string>
     <string name="account_terms">Condiciones</string>
     <string name="account_sign_out_detail">Se cerrará tu sesión de Yamy en todos los dispositivos. Tus datos de aprendizaje y tu clave API guardada se quedan en este dispositivo.</string>
-    <string name="account_delete_detail">¿Quieres eliminar tu cuenta de Yamy y renunciar a los minutos gratuitos que te queden? Tus datos de aprendizaje se quedan en este dispositivo. Podremos conservar los registros necesarios para la facturación o el acceso a la prueba gratuita.</string>
+    <string name="account_delete_detail">¿Quieres eliminar tu cuenta de Yamy? Tus datos de aprendizaje se quedan en este dispositivo.</string>
     <string name="account_request_deletion">Solicitar la eliminación a soporte</string>
     <string name="account_deletion_support_detail">Envía la solicitud desde el correo de tu cuenta de Yamy. Soporte verificará que la cuenta es tuya y revisará cualquier saldo o pago pendiente. Tu cuenta seguirá activa hasta que se complete la eliminación.</string>
     <string name="account_deletion_draft_detail">Al abrir tu aplicación de correo se prepara un borrador. Envíalo para presentar la solicitud. No incluyas contraseñas, claves API ni archivos de conversaciones.</string>
