@@ -19,7 +19,8 @@ import androidx.compose.ui.unit.dp
 
 enum class MuralSymbol { Wave, Themes, Words, Settings, Mic, MicOff, Captions, Transcript, End,
     Keyboard, Sparkles, ArrowUp, ChevronDown, Back, Search, Close, Check, Leaf, ChevronRight, Coffee, Globe, Sun, Moon, Food, Music, Heart, Translate,
-    AcademicCap, ChatBubbles, Trash, TestCheck, Filter, Refresh, Repeat, ChartPie, MoreVertical, Clock, Flame, Key, ExternalLink }
+    AcademicCap, ChatBubbles, Trash, TestCheck, Filter, Refresh, Repeat, ChartPie, MoreVertical, Clock, Flame, Key, ExternalLink,
+    VolumeHigh, VolumeLow, VolumeMuted, SpeakerOutput }
 
 /** Original, consistently weighted artwork; no platform-dependent text glyphs. */
 @Composable
@@ -308,6 +309,62 @@ fun MuralIcon(symbol: MuralSymbol, modifier: Modifier = Modifier, color: Color =
                     line(11f, 13f, 19.5f, 4.5f)
                     line(14.5f, 4.5f, 19.5f, 4.5f)
                     line(19.5f, 4.5f, 19.5f, 9.5f)
+                }
+                MuralSymbol.VolumeHigh -> {
+                    val cone = Path().apply {
+                        moveTo(3f, 9f)
+                        lineTo(7f, 9f)
+                        lineTo(12f, 5f)
+                        lineTo(12f, 19f)
+                        lineTo(7f, 15f)
+                        lineTo(3f, 15f)
+                        close()
+                    }
+                    if (filled) drawPath(cone, color) else drawPath(cone, color, style = stroke)
+                    path {
+                        moveTo(15.5f, 8.8f)
+                        cubicTo(17.5f, 10.6f, 17.5f, 13.4f, 15.5f, 15.2f)
+                    }
+                    path {
+                        moveTo(18.5f, 6f)
+                        cubicTo(21.8f, 9.3f, 21.8f, 14.7f, 18.5f, 18f)
+                    }
+                }
+                MuralSymbol.VolumeLow -> {
+                    val cone = Path().apply {
+                        moveTo(4f, 9f)
+                        lineTo(8f, 9f)
+                        lineTo(13f, 5f)
+                        lineTo(13f, 19f)
+                        lineTo(8f, 15f)
+                        lineTo(4f, 15f)
+                        close()
+                    }
+                    if (filled) drawPath(cone, color) else drawPath(cone, color, style = stroke)
+                    path {
+                        moveTo(16.5f, 8.8f)
+                        cubicTo(18.5f, 10.6f, 18.5f, 13.4f, 16.5f, 15.2f)
+                    }
+                }
+                MuralSymbol.VolumeMuted -> {
+                    val cone = Path().apply {
+                        moveTo(3f, 9f)
+                        lineTo(7f, 9f)
+                        lineTo(12f, 5f)
+                        lineTo(12f, 19f)
+                        lineTo(7f, 15f)
+                        lineTo(3f, 15f)
+                        close()
+                    }
+                    if (filled) drawPath(cone, color) else drawPath(cone, color, style = stroke)
+                    line(16f, 9f, 21f, 15f)
+                    line(21f, 9f, 16f, 15f)
+                }
+                MuralSymbol.SpeakerOutput -> {
+                    drawRoundRect(color, Offset(5.5f, 2.5f), Size(13f, 19f), CornerRadius(2.5f), style = stroke)
+                    drawCircle(color, 1.3f, Offset(12f, 7f), style = stroke)
+                    drawCircle(color, 3.3f, Offset(12f, 14.8f), style = stroke)
+                    drawCircle(color, 0.9f, Offset(12f, 14.8f))
                 }
             }
         }

@@ -477,4 +477,38 @@
     <string name="tests_question_prompt_format">Pregunta %1$d: %2$s</string>
     <string name="settings_dark_theme_title">Tema oscuro</string>
     <string name="settings_dark_theme_summary">Usa colores oscuros para descansar la vista.</string>
+
+    <!-- Live voice notification & media controls -->
+    <string name="notif_channel_live_name">Sesión de voz en vivo</string>
+    <string name="notif_channel_live_desc">Muestra los controles de tu conversación activa con Yamy en las notificaciones y pantalla de bloqueo.</string>
+    <string name="notif_default_title">Yamy</string>
+    <string name="notif_status_connecting">Conectando…</string>
+    <string name="notif_status_listening">Escuchando</string>
+    <string name="notif_status_muted">Micrófono silenciado</string>
+    <string name="notif_subtitle_format">%1$s · Yamy %2$d%%</string>
+    <string name="notif_album_format">%1$s · %2$s</string>
+    <string name="notif_action_help">Pista</string>
+    <string name="notif_action_vol_down">Vol -</string>
+    <string name="notif_action_mute">Silenciar mic</string>
+    <string name="notif_action_unmute">Activar mic</string>
+    <string name="notif_action_vol_up">Vol +</string>
+    <string name="notif_action_end">Terminar</string>
+
+    <!-- Independent Yamy volume controller -->
+    <string name="volume_yamy_pill_label">Volumen de voz de Yamy</string>
+    <string name="volume_yamy_independent_hint">Ajusta solo la voz de Yamy sin cambiar el volumen de tu música o del sistema.</string>
+    <string name="volume_yamy_percent_format">%1$d%%</string>
+    <string name="volume_yamy_mute_ai">Silenciar a Yamy</string>
+    <string name="volume_yamy_unmute_ai">Restaurar voz</string>
+
+    <!-- Background audio & media output settings -->
+    <string name="settings_audio_background_heading">Audio en segundo plano y controles</string>
+    <string name="settings_background_voice_title">Mantener voz en segundo plano</string>
+    <string name="settings_background_voice_summary">Sigue escuchando y hablando con Yamy al cambiar de aplicación o bloquear la pantalla.</string>
+    <string name="settings_media_output_title">Mezclar con otro audio (Salida multimedia)</string>
+    <string name="settings_media_output_summary">Envía la voz de Yamy por el canal multimedia para ajustar su volumen de forma independiente junto con otras apps.</string>
+    <string name="settings_app_volume_title">Volumen de voz de Yamy</string>
+    <string name="settings_app_volume_summary">Nivel de volumen independiente para la voz de Yamy (%1$d%%).</string>
+    <string name="settings_notif_permission_button">Permitir notificación de controles</string>
+    <string name="notice_media_output_next_session">El modo de salida de audio se aplicará en tu próxima sesión de voz.</string>
 </resources>
