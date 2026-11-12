@@ -100,6 +100,7 @@ fun GuardrailDialog(
             }
         },
         containerColor = MuralColors.CreamRaised,
+        tonalElevation = 0.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
@@ -112,24 +113,6 @@ fun GuardrailDialog(
         }
     ) {
         Box(Modifier.fillMaxWidth()) {
-            if (showQuickClose) {
-                IconButton(
-                    onClick = onQuickClose,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(end = 12.dp, top = 2.dp)
-                        .size(36.dp)
-                        .testTag("guardrail-quick-close")
-                ) {
-                    MuralIcon(
-                        symbol = MuralSymbol.Close,
-                        modifier = Modifier.size(20.dp),
-                        color = MuralColors.Secondary,
-                        description = "Cerrar"
-                    )
-                }
-            }
-
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -189,6 +172,7 @@ fun GuardrailDialog(
                             .height(52.dp)
                             .testTag("guardrail-step1-confirm"),
                         shape = RoundedCornerShape(26.dp),
+                        elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MuralColors.Orange,
                             contentColor = MuralColors.Ink
@@ -232,6 +216,7 @@ fun GuardrailDialog(
                             .height(52.dp)
                             .testTag("guardrail-step2-theme"),
                         shape = RoundedCornerShape(26.dp),
+                        elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MuralColors.Orange,
                             contentColor = MuralColors.Ink
@@ -288,6 +273,7 @@ fun GuardrailDialog(
                             .height(52.dp)
                             .testTag("guardrail-generate"),
                         shape = RoundedCornerShape(26.dp),
+                        elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MuralColors.Orange,
                             contentColor = MuralColors.Ink
@@ -327,6 +313,30 @@ fun GuardrailDialog(
                             fontWeight = FontWeight.Medium
                         )
                     }
+                }
+            }
+
+            if (showQuickClose && step != 3) {
+                TextButton(
+                    onClick = onQuickClose,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("guardrail-quick-close"),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    MuralIcon(
+                        symbol = MuralSymbol.End,
+                        modifier = Modifier.size(16.dp),
+                        color = MuralColors.Secondary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.guardrail_skip_and_end_all),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MuralColors.Secondary,
+                    )
                 }
             }
 
@@ -375,6 +385,7 @@ fun CreateTestSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MuralColors.CreamRaised,
+        tonalElevation = 0.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
@@ -2489,7 +2500,8 @@ fun TestSessionScreen(
                 },
             shape = RoundedCornerShape(26.dp),
             color = MuralColors.Surface,
-            shadowElevation = 4.dp
+            shadowElevation = 0.dp,
+            border = BorderStroke(1.dp, MuralColors.ControlBorder)
         ) {
             key(currentItem.id) {
                 val questionListState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -4210,7 +4222,8 @@ fun FlashcardsScreen(
                         shape = RoundedCornerShape(28.dp),
                         color = MuralColors.Surface,
                         modifier = Modifier.fillMaxSize(),
-                        shadowElevation = 6.dp
+                        shadowElevation = 0.dp,
+                        border = BorderStroke(1.dp, MuralColors.ControlBorder)
                     ) {
                         Column(
                             modifier = Modifier

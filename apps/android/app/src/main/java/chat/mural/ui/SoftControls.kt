@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,7 +38,6 @@ fun SoftRoundButton(symbol: MuralSymbol, description: String, onClick: () -> Uni
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) .94f else 1f, spring(stiffness = 600f), label = "button press")
     Box(modifier.size(diameter).graphicsLayer { scaleX = scale; scaleY = scale }
-        .shadow(18.dp, CircleShape, ambientColor = MuralColors.Secondary.copy(alpha = .05f), spotColor = MuralColors.Secondary.copy(alpha = .08f))
         .background(tint, CircleShape).border(1.dp, MuralColors.ControlBorder.copy(alpha = .7f), CircleShape).clip(CircleShape)
         .clickable(enabled = enabled, role = Role.Button, interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center) {
@@ -58,7 +56,6 @@ fun FloatingNavigation(selected: Int, onSelect: (Int) -> Unit) {
     )
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(top = 8.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
         BoxWithConstraints(Modifier.widthIn(max = 340.dp).fillMaxWidth().height(66.dp).testTag("floating-navigation")
-            .shadow(25.dp, CircleShape, ambientColor = MuralColors.Secondary.copy(alpha = .08f), spotColor = MuralColors.Secondary.copy(alpha = .10f))
             .background(MuralColors.Surface.copy(alpha = if (MuralColors.isDark) 0.88f else 0.94f), CircleShape)
             .border(1.5.dp, MuralColors.ControlBorder.copy(alpha = .85f), CircleShape).padding(4.dp).selectableGroup()) {
             val width = maxWidth / items.size

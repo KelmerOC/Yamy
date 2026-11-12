@@ -82,7 +82,7 @@ fun McerLevelSelector(
             onDismissRequest = { expanded = false },
             shape = RoundedCornerShape(16.dp),
             containerColor = MuralColors.Surface,
-            shadowElevation = 8.dp,
+            shadowElevation = 0.dp,
             border = BorderStroke(1.dp, MuralColors.Ink.copy(alpha = 0.08f)),
             modifier = Modifier
                 .widthIn(min = 190.dp)

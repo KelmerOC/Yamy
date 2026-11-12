@@ -8,13 +8,12 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -29,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +78,8 @@ fun YamyVolumePill(
             shape = RoundedCornerShape(999.dp),
             color = MuralColors.Surface.copy(alpha = 0.94f),
             border = BorderStroke(1.dp, MuralColors.ControlBorder),
-            tonalElevation = 1.dp,
-            shadowElevation = 2.dp,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -94,7 +94,7 @@ fun YamyVolumePill(
                 )
                 Text(
                     text = stringResource(R.string.volume_yamy_percent_format, percent),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                     fontWeight = FontWeight.SemiBold,
                     color = MuralColors.Ink,
                 )
@@ -115,73 +115,51 @@ fun YamyVolumePill(
             exit = shrinkVertically() + fadeOut(),
         ) {
             Surface(
+                modifier = Modifier.testTag("yamy-volume-card"),
                 shape = RoundedCornerShape(20.dp),
                 color = MuralColors.Surface,
                 border = BorderStroke(1.dp, MuralColors.ControlBorder),
-                tonalElevation = 2.dp,
-                shadowElevation = 4.dp,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
             ) {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.volume_yamy_pill_label),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MuralColors.Ink,
-                            )
-                            Text(
-                                text = stringResource(R.string.volume_yamy_independent_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MuralColors.Secondary,
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Surface(
-                            modifier = Modifier
-                                .testTag("yamy-volume-mute-toggle")
-                                .clickable {
-                                    if (isMuted) {
-                                        onVolumeChange(previousNonZeroVolume.coerceIn(0.15f, 1f))
-                                    } else {
-                                        previousNonZeroVolume = clampedVolume
-                                        onVolumeChange(0f)
-                                    }
-                                },
-                            shape = RoundedCornerShape(999.dp),
-                            color = if (isMuted) MuralColors.WatercolorWash else MuralColors.CreamRaised,
-                            border = BorderStroke(
-                                1.dp,
-                                if (isMuted) MuralColors.Orange else MuralColors.ControlBorder,
-                            ),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            ) {
-                                MuralIcon(
-                                    symbol = if (isMuted) MuralSymbol.VolumeHigh else MuralSymbol.VolumeMuted,
-                                    color = if (isMuted) MuralColors.Orange else MuralColors.Ink,
-                                    modifier = Modifier.size(15.dp),
-                                )
-                                Text(
-                                    text = stringResource(
-                                        if (isMuted) R.string.volume_yamy_unmute_ai
-                                        else R.string.volume_yamy_mute_ai
-                                    ),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isMuted) MuralColors.Orange else MuralColors.Ink,
-                                )
+                    Surface(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .clickable {
+                                if (isMuted) {
+                                    onVolumeChange(previousNonZeroVolume.coerceIn(0.15f, 1f))
+                                } else {
+                                    previousNonZeroVolume = clampedVolume
+                                    onVolumeChange(0f)
+                                }
                             }
+                            .testTag("yamy-volume-mute-toggle"),
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (isMuted) MuralColors.WatercolorWash else MuralColors.CreamRaised,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isMuted) MuralColors.Orange else MuralColors.ControlBorder,
+                        ),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            MuralIcon(
+                                symbol = if (isMuted) MuralSymbol.VolumeHigh else MuralSymbol.VolumeMuted,
+                                color = if (isMuted) MuralColors.Orange else MuralColors.Ink,
+                                modifier = Modifier.size(18.dp),
+                                description = stringResource(
+                                    if (isMuted) R.string.volume_yamy_unmute_ai else R.string.volume_yamy_mute_ai,
+                                ),
+                            )
                         }
                     }
 
@@ -196,7 +174,7 @@ fun YamyVolumePill(
                         },
                         valueRange = 0f..1f,
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
                             .testTag("yamy-volume-slider"),
                         colors = SliderDefaults.colors(
                             thumbColor = MuralColors.Orange,

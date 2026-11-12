@@ -54,9 +54,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.draw.shadow
+import chat.mural.core.ConversationProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -87,6 +89,7 @@ import chat.mural.core.Speaker
 import chat.mural.core.TopicEcosystemStore
 import chat.mural.core.localized
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TalkScreen(
     vm: MuralViewModel,
@@ -170,9 +173,9 @@ fun TalkScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 McerLevelSelector(
                     currentLevel = vm.currentMcerLevel,
@@ -181,6 +184,11 @@ fun TalkScreen(
                 PedagogicalModeSelector(
                     currentMode = vm.currentPedagogicalMode,
                     onSelectMode = { newMode -> vm.setThemePedagogicalMode(activeThemeId, newMode) }
+                )
+                SessionDurationSelector(
+                    currentMinutes = vm.archive.preferences.sessionMinutes,
+                    enabled = !(vm.isRunning && vm.conversationProvider == ConversationProvider.HOSTED_MINUTES),
+                    onSelectMinutes = vm::selectSessionMinutes,
                 )
             }
         }
@@ -296,7 +304,6 @@ fun TalkScreen(
             })
             val micEnabled = !busy && (vm.state != "active" || vm.isVoiceSession)
             Box(Modifier.padding(bottom = if (compact) 15.dp else 19.dp).size(if (compact) 66.dp else 76.dp)
-                .shadow(18.dp, CircleShape, ambientColor = MuralColors.Orange.copy(alpha = .15f), spotColor = MuralColors.Orange.copy(alpha = .25f))
                 .background(Brush.linearGradient(listOf(Color(0xFF68B5FF), MuralColors.Orange)), CircleShape).clip(CircleShape)
                 .testTag("start-conversation").semantics { contentDescription = micDescription }
                 .clickable(enabled = micEnabled, role = Role.Button) {
@@ -540,7 +547,7 @@ private fun WrittenChatView(
                                 shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp),
                                 color = MuralColors.Surface,
                                 border = BorderStroke(1.dp, MuralColors.Ink.copy(alpha = 0.08f)),
-                                shadowElevation = 1.dp
+                                shadowElevation = 0.dp
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                     Text(
@@ -634,7 +641,7 @@ private fun WrittenChatView(
         // --- Bottom Input Area ---
         Surface(
             color = MuralColors.Cream,
-            tonalElevation = 2.dp,
+            tonalElevation = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (isImeVisible) Modifier.imePadding() else Modifier)
