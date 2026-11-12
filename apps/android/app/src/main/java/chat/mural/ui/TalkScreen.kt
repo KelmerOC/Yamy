@@ -325,6 +325,14 @@ fun TalkScreen(
             Text(stringResource(R.string.talk_reply_any_language), style = MaterialTheme.typography.bodySmall,
                 color = MuralColors.Secondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 7.dp, bottom = 8.dp))
         }
+        if (!vm.isRunning || vm.isVoiceSession) {
+            YamyVolumePill(
+                appVolume = vm.appVolume,
+                onVolumeChange = vm::setAppVolume,
+                mediaOutputEnabled = vm.mediaOutputEnabled,
+                modifier = Modifier.padding(top = if (compact) 4.dp else 6.dp)
+            )
+        }
 
         microphoneMessage?.let {
             Text(it, color = MuralColors.Secondary, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)

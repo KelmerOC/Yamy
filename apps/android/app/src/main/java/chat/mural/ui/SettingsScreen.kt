@@ -1,6 +1,14 @@
 package chat.mural.ui
 
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
 import android.view.WindowManager
+import androidx.core.app.NotificationManagerCompat
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import kotlin.math.roundToInt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -191,6 +199,95 @@ fun SettingsScreen(vm: MuralViewModel, onExport: () -> Unit, onImport: () -> Uni
                                 style = MaterialTheme.typography.bodyLarge, color = MuralColors.Secondary.copy(alpha = .7f))
                             field()
                         })
+                }
+            }
+            item {
+                SettingsGroup(stringResource(R.string.settings_audio_background_heading)) {
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_background_voice_title),
+                        subtitle = stringResource(R.string.settings_background_voice_summary),
+                        checked = vm.backgroundVoiceEnabled,
+                        tag = "settings-background-voice",
+                        onChange = { vm.setBackgroundVoiceEnabled(!vm.backgroundVoiceEnabled) }
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_media_output_title),
+                        subtitle = stringResource(R.string.settings_media_output_summary),
+                        checked = vm.mediaOutputEnabled,
+                        tag = "settings-media-output",
+                        onChange = { vm.setMediaOutputEnabled(!vm.mediaOutputEnabled) }
+                    )
+                    SettingsDivider()
+                    val clampedVolume = vm.appVolume.coerceIn(0f, 1f)
+                    val volumePercent = (clampedVolume * 100f).roundToInt()
+                    val volumeSymbol = when {
+                        clampedVolume <= 0.005f -> MuralSymbol.VolumeMuted
+                        clampedVolume <= 0.5f -> MuralSymbol.VolumeLow
+                        else -> MuralSymbol.VolumeHigh
+                    }
+                    val volumeTint = if (clampedVolume <= 0.005f) MuralColors.Secondary else MuralColors.Orange
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            MuralIcon(
+                                symbol = volumeSymbol,
+                                color = volumeTint,
+                                modifier = Modifier.size(20.dp),
+                                description = stringResource(R.string.settings_app_volume_title)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.settings_app_volume_title),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    stringResource(R.string.settings_app_volume_summary, volumePercent),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MuralColors.Secondary
+                                )
+                            }
+                        }
+                        Slider(
+                            value = clampedVolume,
+                            onValueChange = vm::setAppVolume,
+                            valueRange = 0f..1f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings-app-volume-slider"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = MuralColors.Orange,
+                                activeTrackColor = MuralColors.Orange,
+                                inactiveTrackColor = MuralColors.WatercolorWash,
+                            )
+                        )
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        vm.backgroundVoiceEnabled &&
+                        !NotificationManagerCompat.from(context).areNotificationsEnabled()
+                    ) {
+                        SettingsDivider()
+                        SettingsRow(
+                            title = stringResource(R.string.settings_notif_permission_button),
+                            tint = MuralColors.Orange,
+                            chevron = true,
+                            modifier = Modifier.testTag("settings-notif-permission"),
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                runCatching { context.startActivity(intent) }
+                            }
+                        )
+                    }
                 }
             }
             if (onAccount != null) item {
