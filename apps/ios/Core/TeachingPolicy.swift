@@ -450,6 +450,34 @@ public enum TeachingPolicy {
         Do NOT search the web. Do NOT include markdown code blocks or additional text. Output raw JSON only.
         """
     }
+    public static func themeCheckpointPrompt(language: LanguageModule) -> String {
+        """
+        You are Yamy's pedagogical memory master for \(language.name).
+        Analyze the completed conversation transcript for the active theme.
+        Generate an updated checkpoint and persistent memory structure.
+        Return ONLY a valid JSON object matching this schema:
+        {
+          "checkpointSummary": "A concise 2-3 sentence overview of narrative progress, decisions made, and where the conversation left off so the tutor can resume seamlessly without starting from scratch.",
+          "lastSessionSummary": "A concise 1-2 sentence recap of the key events of this specific session.",
+          "keyTopicsDiscussed": ["topic 1", "topic 2"],
+          "frequentErrors": ["error or grammar point to reinforce"],
+          "practicedWords": ["lemma or key phrase"]
+        }
+        Do NOT include markdown fences, code blocks, or explanations; output raw JSON only.
+        """
+    }
+    public static func themeTranslationPrompt(targetLanguageId: String, targetLanguageName: String) -> String {
+        """
+        You are Yamy's localization master. Translate the provided conversation theme's title, subtitle, and situation into \(targetLanguageName) (\(targetLanguageId)) for the user interface.
+        Return ONLY a valid JSON object matching this schema:
+        {
+          "title": "Translated concise theme title in \(targetLanguageName) (max 4 words)",
+          "subtitle": "Translated short subtitle or hook in \(targetLanguageName)",
+          "situation": "Translated situation roleplay prompt in \(targetLanguageName)"
+        }
+        Do NOT include markdown fences or explanations; output raw JSON only.
+        """
+    }
     public static func context(_ session: SessionRecord, passage: Passage? = nil) -> String {
         let themeInfo = session.themeID != nil ? "ACTIVE THEME: \(session.title) (ID: \(session.themeID ?? ""))\n" : ""
         let rows = session.passages.suffix(14).map { p in
