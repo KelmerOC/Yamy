@@ -1,5 +1,6 @@
 package chat.mural.media
 
+import android.support.v4.media.session.PlaybackStateCompat
 import chat.mural.core.VoiceSettingsStore
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,6 +40,7 @@ class BackgroundMediaSessionTest {
         assertFalse(initial.isRunning)
         assertFalse(initial.isConnecting)
         assertFalse(initial.isMuted)
+        assertFalse(initial.isPaused)
         assertEquals(VoiceSettingsStore.DEFAULT_APP_VOLUME, initial.appVolume, 0.0001f)
         assertEquals(initial, YamySessionCoordinator.snapshots.value)
 
@@ -160,5 +162,120 @@ class BackgroundMediaSessionTest {
             "MainActivity.onStop() must guard vm.background() with shouldStayAliveInBackground()",
             onStopBlock.contains("shouldStayAliveInBackground()")
         )
+    }
+
+    @Test
+    fun togglePauseDispatchesCleanlyWithDefaultFallbackAndExplicitHandler() {
+        // Safe no-op without handler
+        YamySessionCoordinator.dispatchTogglePause()
+
+        // Default interface method forwards onTogglePause -> onToggleMute when omitted
+        var fallbackMuteCount = 0
+        val defaultHandler = object : YamySessionCoordinator.ActionHandler {
+            override fun onToggleMute() {
+                fallbackMuteCount++
+            }
+            override fun onVolumeDelta(delta: Float) = Unit
+            override fun onHelp() = Unit
+            override fun onEndCall() = Unit
+        }
+        YamySessionCoordinator.registerHandler(defaultHandler)
+        YamySessionCoordinator.dispatchTogglePause()
+        assertEquals(1, fallbackMuteCount)
+
+        // Explicit onTogglePause handler receives dedicated pause dispatches
+        var explicitPauseCount = 0
+        val pauseHandler = object : YamySessionCoordinator.ActionHandler {
+            override fun onToggleMute() = Unit
+            override fun onTogglePause() {
+                explicitPauseCount++
+            }
+            override fun onVolumeDelta(delta: Float) = Unit
+            override fun onHelp() = Unit
+            override fun onEndCall() = Unit
+        }
+        YamySessionCoordinator.registerHandler(pauseHandler)
+        YamySessionCoordinator.dispatchTogglePause()
+        assertEquals(1, explicitPauseCount)
+        assertEquals(1, fallbackMuteCount)
+    }
+
+    @Test
+    fun notificationControlsExposeStrictlyTwoActionsPauseAndEndCall() {
+        assertEquals(2, YamyMediaSessionController.MAX_NOTIFICATION_ACTIONS)
+
+        val supported = YamyMediaSessionController.supportedPlaybackActions()
+        assertTrue((supported and PlaybackStateCompat.ACTION_PLAY_PAUSE) != 0L)
+        assertTrue((supported and PlaybackStateCompat.ACTION_PLAY) != 0L)
+        assertTrue((supported and PlaybackStateCompat.ACTION_PAUSE) != 0L)
+        assertTrue((supported and PlaybackStateCompat.ACTION_STOP) != 0L)
+        assertEquals(0L, supported and PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+        assertEquals(0L, supported and PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+
+        val mainDir = appMainDir()
+        val controllerSource = File(mainDir, "java/chat/mural/media/YamyMediaSessionController.kt").readText()
+        assertFalse("Help custom action must be removed from media notification", controllerSource.contains("CUSTOM_ACTION_HELP"))
+        assertFalse("Skip previous action must be absent", controllerSource.contains("ACTION_SKIP_TO_PREVIOUS"))
+        assertFalse("Skip next action must be absent", controllerSource.contains("ACTION_SKIP_TO_NEXT"))
+        assertEquals(2, Regex("""\.addAction\(""").findAll(controllerSource).count())
+        assertTrue(controllerSource.contains(".setShowActionsInCompactView(0, 1)"))
+
+        val serviceSource = File(mainDir, "java/chat/mural/media/YamyVoiceForegroundService.kt").readText()
+        assertTrue(serviceSource.contains("ACTION_TOGGLE_PAUSE -> YamySessionCoordinator.dispatchTogglePause()"))
+        assertTrue(serviceSource.contains("ACTION_END_CALL ->"))
+
+        listOf("ic_notif_pause.xml", "ic_notif_play.xml", "ic_notif_end_call.xml").forEach { name ->
+            val icon = File(mainDir, "res/drawable/$name")
+            assertTrue("$name must exist as monochrome vector drawable", icon.isFile)
+            val xml = icon.readText()
+            assertTrue(xml.contains("<vector"))
+            assertTrue(xml.contains("#FFFFFF"))
+        }
+        listOf("ic_notif_help.xml", "ic_notif_vol_down.xml", "ic_notif_vol_up.xml").forEach { removed ->
+            assertFalse("$removed must be deleted", File(mainDir, "res/drawable/$removed").exists())
+        }
+    }
+
+    @Test
+    fun flatVectorUiPreservesZeroDropShadowsDurationSelectorBarOnlyVolumeAndClearGuardrail() {
+        val mainDir = appMainDir()
+        val flatUiFiles = listOf(
+            "ui/TalkScreen.kt",
+            "ui/SoftControls.kt",
+            "ui/VolumeController.kt",
+            "ui/McerLevelSelector.kt",
+            "ui/PedagogicalModeSelector.kt",
+            "ui/SessionDurationSelector.kt",
+            "ui/LearningTestsUi.kt",
+        )
+        val nonZeroShadowElevation = Regex("""shadowElevation\s*=\s*(?!0(?:\.0+)?\.dp)\d""")
+        flatUiFiles.forEach { rel ->
+            val content = File(mainDir, "java/chat/mural/$rel").readText()
+            assertFalse("$rel must not use Compose .shadow(", Regex("""\.shadow\(""").containsMatchIn(content))
+            assertFalse("$rel must not use non-zero shadowElevation", nonZeroShadowElevation.containsMatchIn(content))
+        }
+
+        val talkSource = File(mainDir, "java/chat/mural/ui/TalkScreen.kt").readText()
+        assertTrue("TalkScreen must render SessionDurationSelector inside FlowRow", talkSource.contains("FlowRow("))
+        assertTrue("TalkScreen must render SessionDurationSelector", talkSource.contains("SessionDurationSelector("))
+        assertTrue("TalkScreen must wire selectSessionMinutes", talkSource.contains("vm::selectSessionMinutes"))
+
+        val durationSource = File(mainDir, "java/chat/mural/ui/SessionDurationSelector.kt").readText()
+        assertTrue(durationSource.contains("MuralSymbol.Clock"))
+        assertTrue(durationSource.contains("tnum"))
+        assertTrue(durationSource.contains("session-duration-selector"))
+
+        val volumeSource = File(mainDir, "java/chat/mural/ui/VolumeController.kt").readText()
+        assertFalse("Volume bar must not render explanatory hint text", volumeSource.contains("volume_yamy_independent_hint"))
+        val cardIdx = volumeSource.indexOf("yamy-volume-card")
+        assertTrue(cardIdx >= 0)
+        val expandedCardSource = volumeSource.substring(cardIdx)
+        assertFalse("Expanded volume bar must not contain any Text composables", expandedCardSource.contains("Text("))
+        assertTrue(volumeSource.contains("yamy-volume-mute-toggle"))
+        assertTrue(volumeSource.contains("yamy-volume-slider"))
+
+        val guardrailSource = File(mainDir, "java/chat/mural/ui/LearningTestsUi.kt").readText()
+        assertTrue(guardrailSource.contains("R.string.guardrail_skip_and_end_all"))
+        assertTrue(guardrailSource.contains("guardrail-quick-close"))
     }
 }

@@ -111,4 +111,19 @@ class PerAppVolumeAndMediaRouteTest {
         assertFalse("AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK must not call fail()", duckBranch.contains("fail("))
         assertFalse("AUDIOFOCUS_LOSS_TRANSIENT must not call fail()", transientBranch.contains("fail("))
     }
+
+    @Test
+    fun transportsAndViewModelSupportBidirectionalPauseAndDurationSelection() {
+        val mainDir = appMainDir()
+        val geminiSource = File(mainDir, "java/chat/mural/network/GeminiLiveTransport.kt").readText()
+        val liveSource = File(mainDir, "java/chat/mural/network/LiveTransport.kt").readText()
+        val vmSource = File(mainDir, "java/chat/mural/MuralViewModel.kt").readText()
+
+        assertTrue("GeminiLiveTransport must expose setPlaybackPaused", geminiSource.contains("fun setPlaybackPaused(paused: Boolean)"))
+        assertTrue("GeminiLiveTransport must track userPaused", geminiSource.contains("val userPaused = AtomicBoolean(false)"))
+        assertTrue("LiveTransport must expose setPlaybackPaused", liveSource.contains("fun setPlaybackPaused(paused: Boolean)"))
+        assertTrue("LiveTransport must track userPaused", liveSource.contains("val userPaused = AtomicBoolean(false)"))
+        assertTrue("MuralViewModel must expose toggleMediaPause()", vmSource.contains("fun toggleMediaPause()"))
+        assertTrue("MuralViewModel must expose selectSessionMinutes(minutes: Int)", vmSource.contains("fun selectSessionMinutes(minutes: Int)"))
+    }
 }
