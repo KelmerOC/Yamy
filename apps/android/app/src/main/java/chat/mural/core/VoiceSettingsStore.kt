@@ -41,6 +41,24 @@ class VoiceSettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_HAS_SEEN_API_KEY_GUIDE, value).apply()
         }
 
+    var backgroundVoiceEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BACKGROUND_VOICE, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_BACKGROUND_VOICE, value).apply()
+        }
+
+    var mediaOutputEnabled: Boolean
+        get() = prefs.getBoolean(KEY_MEDIA_OUTPUT, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_MEDIA_OUTPUT, value).apply()
+        }
+
+    var appVolume: Float
+        get() = clampVolume(prefs.getFloat(KEY_APP_VOLUME, DEFAULT_APP_VOLUME))
+        set(value) {
+            prefs.edit().putFloat(KEY_APP_VOLUME, clampVolume(value)).apply()
+        }
+
     companion object {
         private const val PREFERENCES_NAME = "mural_voice_settings"
         const val KEY_HAS_SEEN_API_KEY_GUIDE = "has_seen_api_key_guide"
@@ -49,6 +67,10 @@ class VoiceSettingsStore(context: Context) {
         const val KEY_VOICE_TIMBRE = "voice_timbre"
         const val KEY_APP_LANGUAGE = "app_language"
         const val KEY_DARK_THEME = "dark_theme"
+        const val KEY_BACKGROUND_VOICE = "background_voice_enabled"
+        const val KEY_MEDIA_OUTPUT = "media_output_enabled"
+        const val KEY_APP_VOLUME = "app_volume"
+        const val DEFAULT_APP_VOLUME = 1.0f
 
         const val SPEED_BEGINNER = "beginner"
         const val SPEED_NORMAL = "normal"
@@ -61,5 +83,14 @@ class VoiceSettingsStore(context: Context) {
         const val VOICE_CHARON = "Charon"
 
         val ALL_VOICE_TIMBRES = listOf(VOICE_AOEDE, VOICE_KORE, VOICE_PUCK, VOICE_FENRIR, VOICE_CHARON)
+
+        private fun clampVolume(volume: Float): Float =
+            if (volume.isNaN()) DEFAULT_APP_VOLUME else volume.coerceIn(0f, 1f)
+
+        fun perceptualGain(volume: Float): Float {
+            if (volume.isNaN()) return 0f
+            val v = volume.coerceIn(0f, 1f)
+            return if (v == 0f) 0f else v * v
+        }
     }
 }

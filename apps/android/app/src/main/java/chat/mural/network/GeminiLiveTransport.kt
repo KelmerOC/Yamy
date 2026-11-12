@@ -22,6 +22,7 @@ import android.os.Process
 import android.util.Base64
 import android.util.Log
 import chat.mural.R
+import chat.mural.core.VoiceSettingsStore
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -93,12 +94,20 @@ class GeminiLiveTransport(
         history: JsonArray = JsonArray(emptyList()),
         language: String? = null,
         voiceName: String = DEFAULT_VOICE,
+        useMediaOutput: Boolean = true,
+        initialAppVolume: Float = VoiceSettingsStore.DEFAULT_APP_VOLUME,
     ) = withContext(AUDIO_DISPATCHER) {
         val attemptGen = detachSession()
         emitZeroLevels()
 
         if (applicationContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             throw LiveTransport.microphoneException(applicationContext)
+        }
+
+        val sanitizedVolume = if (initialAppVolume.isNaN()) {
+            VoiceSettingsStore.DEFAULT_APP_VOLUME
+        } else {
+            initialAppVolume.coerceIn(0f, 1f)
         }
 
         val session = Session(
@@ -112,6 +121,8 @@ class GeminiLiveTransport(
                 @Suppress("DEPRECATION")
                 audioManager.isSpeakerphoneOn
             } else false,
+            useMediaOutput = useMediaOutput,
+            initialAppVolume = sanitizedVolume,
         )
 
         synchronized(lock) {
@@ -289,6 +300,21 @@ class GeminiLiveTransport(
         mutedState = muted
     }
 
+    fun setAppVolume(volume: Float) {
+        val clamped = if (volume.isNaN()) 0f else volume.coerceIn(0f, 1f)
+        val session = activeSession ?: return
+        session.appVolume = clamped
+        applyPlaybackVolume(session)
+    }
+
+    private fun applyPlaybackVolume(session: Session) {
+        val track = session.audioTrack ?: return
+        val gain = (VoiceSettingsStore.perceptualGain(session.appVolume) * session.duckMultiplier).coerceIn(0f, 1f)
+        try {
+            track.setVolume(gain)
+        } catch (_: Exception) { }
+    }
+
     fun close() {
         val session = activeSession ?: return
         session.closing.set(true)
@@ -320,21 +346,36 @@ class GeminiLiveTransport(
     }
 
     private fun configureAudio(session: Session) {
-        val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
+        val profile = if (session.useMediaOutput) AudioOutputProfile.MEDIA else AudioOutputProfile.COMMUNICATION
+        val attributes = audioAttributesFor(profile)
+        val focusGain = if (session.useMediaOutput) AudioManager.AUDIOFOCUS_GAIN else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
 
         val listener = AudioManager.OnAudioFocusChangeListener { change ->
-            if (change == AudioManager.AUDIOFOCUS_LOSS ||
-                change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-                change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-            ) {
-                fail(session, applicationContext.getString(R.string.error_transport_audio_interrupted))
+            when (change) {
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    session.focusPaused.set(false)
+                    session.duckMultiplier = 0.25f
+                    applyPlaybackVolume(session)
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    session.focusPaused.set(true)
+                    session.duckMultiplier = 0f
+                    applyPlaybackVolume(session)
+                }
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    session.focusPaused.set(false)
+                    session.duckMultiplier = 1.0f
+                    applyPlaybackVolume(session)
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    if (!session.closing.get()) {
+                        fail(session, applicationContext.getString(R.string.error_transport_audio_interrupted))
+                    }
+                }
             }
         }
 
-        val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        val focusRequest = AudioFocusRequest.Builder(focusGain)
             .setAudioAttributes(attributes)
             .setAcceptsDelayedFocusGain(false)
             .setOnAudioFocusChangeListener(listener, Handler(Looper.getMainLooper()))
@@ -345,24 +386,30 @@ class GeminiLiveTransport(
             throw LiveTransport.audioFocusException(applicationContext)
         }
         session.ownsAudioFocus = true
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.mode = if (session.useMediaOutput) {
+            AudioManager.MODE_NORMAL
+        } else {
+            AudioManager.MODE_IN_COMMUNICATION
+        }
         session.ownsAudioMode = true
 
-        routeCommunicationAudio(session)
+        if (!session.useMediaOutput) {
+            routeCommunicationAudio(session)
 
-        val callback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = reroute()
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = reroute()
-            private fun reroute() {
-                audioScope.launch {
-                    if (activeSession?.id == session.id && !session.closing.get()) {
-                        try { routeCommunicationAudio(session) } catch (_: Exception) { }
+            val callback = object : AudioDeviceCallback() {
+                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = reroute()
+                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = reroute()
+                private fun reroute() {
+                    audioScope.launch {
+                        if (activeSession?.id == session.id && !session.closing.get()) {
+                            try { routeCommunicationAudio(session) } catch (_: Exception) { }
+                        }
                     }
                 }
             }
+            session.deviceCallback = callback
+            audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         }
-        session.deviceCallback = callback
-        audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
     }
 
     @Suppress("DEPRECATION")
@@ -927,14 +974,10 @@ class GeminiLiveTransport(
             AudioFormat.ENCODING_PCM_16BIT,
         ).coerceAtLeast(4096)
 
+        val profile = if (session.useMediaOutput) AudioOutputProfile.MEDIA else AudioOutputProfile.COMMUNICATION
         val audioTrack = try {
             AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
+                .setAudioAttributes(audioAttributesFor(profile))
                 .setAudioFormat(
                     AudioFormat.Builder()
                         .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -952,7 +995,7 @@ class GeminiLiveTransport(
 
         session.audioTrack = audioTrack
         try {
-            audioTrack.setVolume(1.0f)
+            applyPlaybackVolume(session)
             audioTrack.play()
         } catch (_: Exception) { }
 
@@ -1116,8 +1159,13 @@ class GeminiLiveTransport(
         val voiceName: String,
         val previousAudioMode: Int,
         val previousSpeakerphone: Boolean = false,
+        val useMediaOutput: Boolean = true,
+        initialAppVolume: Float = VoiceSettingsStore.DEFAULT_APP_VOLUME,
     ) {
         val modelName: String = DEFAULT_MODEL
+        @Volatile var appVolume: Float = initialAppVolume.coerceIn(0f, 1f)
+        @Volatile var duckMultiplier: Float = 1.0f
+        val focusPaused = AtomicBoolean(false)
         val setupComplete = CompletableDeferred<Unit>()
         val closing = AtomicBoolean(false)
         val isAwaitingInitialGreeting = AtomicBoolean(false)

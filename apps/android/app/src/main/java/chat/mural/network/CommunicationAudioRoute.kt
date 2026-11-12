@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.core.content.ContextCompat
@@ -11,6 +12,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+enum class AudioOutputProfile {
+    MEDIA,
+    COMMUNICATION,
+}
+
+fun audioAttributesFor(profile: AudioOutputProfile): AudioAttributes {
+    val usage = when (profile) {
+        AudioOutputProfile.MEDIA -> AudioAttributes.USAGE_MEDIA
+        AudioOutputProfile.COMMUNICATION -> AudioAttributes.USAGE_VOICE_COMMUNICATION
+    }
+    return AudioAttributes.Builder()
+        .setUsage(usage)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+}
 
 /** Pure selection policy for AudioManager's communication devices (Android 12+). */
 internal fun <T> selectCommunicationDevice(current: T?, available: List<T>, sameDevice: (T, T) -> Boolean = { left, right -> left == right }, typeOf: (T) -> Int): T? {

@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import chat.mural.R
+import chat.mural.core.VoiceSettingsStore
 import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -92,7 +93,14 @@ class LiveTransport(
         history: JsonArray = JsonArray(emptyList()),
         language: String? = null,
         voiceName: String = GeminiLiveTransport.DEFAULT_VOICE,
+        useMediaOutput: Boolean = true,
+        initialAppVolume: Float = VoiceSettingsStore.DEFAULT_APP_VOLUME,
     ) = withContext(AUDIO_DISPATCHER) {
+        val sanitizedVolume = if (initialAppVolume.isNaN()) {
+            VoiceSettingsStore.DEFAULT_APP_VOLUME
+        } else {
+            initialAppVolume.coerceIn(0f, 1f)
+        }
         val isGemini = api.providerType == CredentialStore.ProviderType.GEMINI || (api.apiKey?.startsWith("AIza") == true) || (api.apiKey?.startsWith("AQ") == true) || (api.apiKey?.startsWith("sk-") != true)
         if (isGemini) {
             isGeminiActive = true
@@ -102,6 +110,8 @@ class LiveTransport(
                 history = history,
                 language = language,
                 voiceName = voiceName,
+                useMediaOutput = useMediaOutput,
+                initialAppVolume = sanitizedVolume,
             )
             return@withContext
         }
@@ -118,6 +128,8 @@ class LiveTransport(
             ownership = LiveSessionOwnership(audioScope),
             previousAudioMode = audioManager.mode,
             previousSpeakerphone = if (Build.VERSION.SDK_INT < 31) legacySpeakerphoneState() else false,
+            useMediaOutput = useMediaOutput,
+            initialAppVolume = sanitizedVolume,
         )
         synchronized(lock) {
             if (generation.get() != attemptGeneration) throw CancellationException("Voice connection superseded")
@@ -213,6 +225,24 @@ class LiveTransport(
         }
     }
 
+    fun setAppVolume(volume: Float) {
+        val clamped = if (volume.isNaN()) 0f else volume.coerceIn(0f, 1f)
+        geminiTransport.setAppVolume(clamped)
+        val attempt = activeAttempt ?: return
+        attempt.appVolume = clamped
+        applyWebRtcVolume(attempt)
+    }
+
+    private fun applyWebRtcVolume(attempt: Attempt) {
+        val track = attempt.remoteAudioTrack ?: return
+        val gain = (VoiceSettingsStore.perceptualGain(attempt.appVolume) * attempt.duckMultiplier)
+            .toDouble()
+            .coerceIn(0.0, 1.0)
+        try {
+            track.setVolume(gain)
+        } catch (_: Exception) { }
+    }
+
     fun close() {
         if (isGeminiActive) {
             geminiTransport.close()
@@ -267,7 +297,11 @@ class LiveTransport(
         val audioDeviceModule = JavaAudioDeviceModule.builder(applicationContext)
             .setUseHardwareAcousticEchoCanceler(true)
             .setUseHardwareNoiseSuppressor(true)
-            .setAudioAttributes(voiceAudioAttributes())
+            .setAudioAttributes(
+                audioAttributesFor(
+                    if (attempt.useMediaOutput) AudioOutputProfile.MEDIA else AudioOutputProfile.COMMUNICATION
+                )
+            )
             .setAudioRecordErrorCallback(object : AudioRecordErrorCallback {
                 override fun onWebRtcAudioRecordInitError(message: String) = audioFailure(attempt)
                 override fun onWebRtcAudioRecordStartError(
@@ -326,9 +360,17 @@ class LiveTransport(
         override fun onRemoveStream(stream: MediaStream) = Unit
         override fun onDataChannel(channel: DataChannel) = Unit
         override fun onRenegotiationNeeded() = Unit
-        override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) = Unit
+        override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {
+            val track = receiver.track() as? org.webrtc.AudioTrack ?: return
+            attempt.remoteAudioTrack = track
+            applyWebRtcVolume(attempt)
+        }
         override fun onRemoveTrack(receiver: RtpReceiver) = Unit
-        override fun onTrack(transceiver: RtpTransceiver) = Unit
+        override fun onTrack(transceiver: RtpTransceiver) {
+            val track = transceiver.receiver.track() as? org.webrtc.AudioTrack ?: return
+            attempt.remoteAudioTrack = track
+            applyWebRtcVolume(attempt)
+        }
 
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
             if (state == PeerConnection.IceGatheringState.COMPLETE && isCurrent(attempt)) {
@@ -468,23 +510,42 @@ class LiveTransport(
     }
 
     private fun configureAudio(attempt: Attempt) {
-        // Do not claim an in-progress call or a legacy SCO connection owned by another app.
-        if (attempt.previousAudioMode != AudioManager.MODE_NORMAL || audioManager.mode != AudioManager.MODE_NORMAL ||
-            (Build.VERSION.SDK_INT < 31 && LegacyCommunicationAudioRoute.hasExistingSco(applicationContext, audioManager))) {
-            throw audioFocusException()
-        }
-        val attributes = voiceAudioAttributes()
-        lateinit var focusRequest: AudioFocusRequest
-        val listener = AudioManager.OnAudioFocusChangeListener { change ->
-            if (change == AudioManager.AUDIOFOCUS_LOSS ||
-                change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-                change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-            ) {
-                attempt.focusLost.set(true)
-                fail(attempt, applicationContext.getString(R.string.error_transport_audio_interrupted))
+        if (!attempt.useMediaOutput) {
+            // Do not claim an in-progress call or a legacy SCO connection owned by another app.
+            if (attempt.previousAudioMode != AudioManager.MODE_NORMAL || audioManager.mode != AudioManager.MODE_NORMAL ||
+                (Build.VERSION.SDK_INT < 31 && LegacyCommunicationAudioRoute.hasExistingSco(applicationContext, audioManager))) {
+                throw audioFocusException()
             }
         }
-        focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        val profile = if (attempt.useMediaOutput) AudioOutputProfile.MEDIA else AudioOutputProfile.COMMUNICATION
+        val attributes = audioAttributesFor(profile)
+        val focusGain = if (attempt.useMediaOutput) AudioManager.AUDIOFOCUS_GAIN else AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+        val listener = AudioManager.OnAudioFocusChangeListener { change ->
+            when (change) {
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    attempt.focusPaused.set(false)
+                    attempt.duckMultiplier = 0.25f
+                    applyWebRtcVolume(attempt)
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    attempt.focusPaused.set(true)
+                    attempt.duckMultiplier = 0f
+                    applyWebRtcVolume(attempt)
+                }
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    attempt.focusPaused.set(false)
+                    attempt.duckMultiplier = 1.0f
+                    applyWebRtcVolume(attempt)
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    attempt.focusLost.set(true)
+                    if (!attempt.closing.get()) {
+                        fail(attempt, applicationContext.getString(R.string.error_transport_audio_interrupted))
+                    }
+                }
+            }
+        }
+        val focusRequest = AudioFocusRequest.Builder(focusGain)
             .setAudioAttributes(attributes)
             .setAcceptsDelayedFocusGain(false)
             .setOnAudioFocusChangeListener(listener, Handler(Looper.getMainLooper()))
@@ -494,29 +555,35 @@ class LiveTransport(
             throw audioFocusException()
         }
         attempt.ownsAudioFocus = true
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-        attempt.ownsAudioMode = true
-        if (Build.VERSION.SDK_INT < 31) {
-            val legacyRoute = LegacyCommunicationAudioRoute(applicationContext, audioManager, audioScope,
-                attempt.previousSpeakerphone, onFailure = { audioFailure(attempt) })
-            attempt.legacyAudioRoute = legacyRoute
-            legacyRoute.start()
+        audioManager.mode = if (attempt.useMediaOutput) {
+            AudioManager.MODE_NORMAL
+        } else {
+            AudioManager.MODE_IN_COMMUNICATION
         }
-        routeCommunicationAudio(attempt)
-        val callback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = reroute()
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = reroute()
-            private fun reroute() {
-                audioScope.launch {
-                    if (isCurrent(attempt)) {
-                        try { routeCommunicationAudio(attempt) }
-                        catch (_: Exception) { audioFailure(attempt) }
+        attempt.ownsAudioMode = true
+        if (!attempt.useMediaOutput) {
+            if (Build.VERSION.SDK_INT < 31) {
+                val legacyRoute = LegacyCommunicationAudioRoute(applicationContext, audioManager, audioScope,
+                    attempt.previousSpeakerphone, onFailure = { audioFailure(attempt) })
+                attempt.legacyAudioRoute = legacyRoute
+                legacyRoute.start()
+            }
+            routeCommunicationAudio(attempt)
+            val callback = object : AudioDeviceCallback() {
+                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = reroute()
+                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = reroute()
+                private fun reroute() {
+                    audioScope.launch {
+                        if (isCurrent(attempt)) {
+                            try { routeCommunicationAudio(attempt) }
+                            catch (_: Exception) { audioFailure(attempt) }
+                        }
                     }
                 }
             }
+            attempt.deviceCallback = callback
+            audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         }
-        attempt.deviceCallback = callback
-        audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
     }
 
     private fun fail(attempt: Attempt, message: String) {
@@ -534,11 +601,6 @@ class LiveTransport(
     private fun audioFailure(attempt: Attempt) {
         fail(attempt, applicationContext.getString(R.string.error_transport_audio_stopped))
     }
-
-    private fun voiceAudioAttributes() = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-        .build()
 
     private fun routeCommunicationAudio(attempt: Attempt) {
         if (Build.VERSION.SDK_INT >= 31) {
@@ -607,6 +669,7 @@ class LiveTransport(
         try { attempt.peer?.close() } catch (_: Exception) { }
         try { attempt.peer?.dispose() } catch (_: Exception) { }
         try { attempt.track?.dispose() } catch (_: Exception) { }
+        attempt.remoteAudioTrack = null
         try { attempt.source?.dispose() } catch (_: Exception) { }
         try { attempt.factory?.dispose() } catch (_: Exception) { }
         try { attempt.audioDeviceModule?.release() } catch (_: Exception) { }
@@ -665,7 +728,13 @@ class LiveTransport(
         val ownership: LiveSessionOwnership,
         val previousAudioMode: Int,
         val previousSpeakerphone: Boolean,
+        val useMediaOutput: Boolean = true,
+        initialAppVolume: Float = VoiceSettingsStore.DEFAULT_APP_VOLUME,
     ) {
+        @Volatile var appVolume: Float = initialAppVolume.coerceIn(0f, 1f)
+        @Volatile var duckMultiplier: Float = 1.0f
+        val focusPaused = AtomicBoolean(false)
+        var remoteAudioTrack: org.webrtc.AudioTrack? = null
         var networkRecovery: VoiceConnectionRecovery? = null
         var deviceCallback: AudioDeviceCallback? = null
         var focusRequest: AudioFocusRequest? = null
