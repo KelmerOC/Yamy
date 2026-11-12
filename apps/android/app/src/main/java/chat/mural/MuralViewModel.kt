@@ -122,6 +122,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     var meaningLimitReached by mutableStateOf(false); private set
     var working by mutableStateOf(false); private set
     var isMuted by mutableStateOf(false); private set
+    var isMediaPaused by mutableStateOf(false); private set
     var inputLevel by mutableStateOf(0.0); private set
     var outputLevel by mutableStateOf(0.0); private set
     var selectedTheme by mutableStateOf<ConversationTheme?>(null); private set
@@ -300,6 +301,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
 
     private val mediaActionHandler = object : YamySessionCoordinator.ActionHandler {
         override fun onToggleMute() = toggleMute()
+        override fun onTogglePause() = toggleMediaPause()
         override fun onVolumeDelta(delta: Float) = adjustAppVolume(delta)
         override fun onHelp() = help()
         override fun onEndCall() = end("Ended from media controls")
@@ -315,6 +317,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
             ?: app.getString(R.string.notif_default_title)
         val statusLabel = when {
             state == "connecting" -> app.getString(R.string.notif_status_connecting)
+            isMediaPaused -> app.getString(R.string.notif_status_paused)
             isMuted -> app.getString(R.string.notif_status_muted)
             else -> app.getString(R.string.notif_status_listening)
         }
@@ -330,6 +333,7 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
                 isRunning = isRunning,
                 isConnecting = state == "connecting",
                 isMuted = isMuted,
+                isPaused = isMediaPaused,
                 appVolume = appVolume,
                 startedAtMs = startedAtMs,
                 totalDurationMs = totalDurationMs,
@@ -1759,6 +1763,17 @@ $transcriptSummary
             refreshLearningTests()
         }
     }
+    fun selectSessionMinutes(minutes: Int) {
+        if (!storageReady) return
+        val clamped = minutes.coerceIn(1, 60)
+        if (archive.preferences.sessionMinutes == clamped) return
+        if (isRunning && conversationProvider == ConversationProvider.HOSTED_MINUTES) return
+        archive = archive.copy(preferences = archive.preferences.copy(sessionMinutes = clamped))
+        persist()
+        if (isRunning && voiceSession) {
+            publishLiveSessionSnapshot()
+        }
+    }
     fun chooseTheme(theme: ConversationTheme?) {
         if (!isRunning && session != null) resetConversation()
         selectedTheme = theme
@@ -1777,8 +1792,26 @@ $transcriptSummary
     }
     fun toggleMute() {
         if (state == "active" && voiceSession) {
-            isMuted = !isMuted
-            transport.mute(isMuted)
+            if (isMediaPaused) {
+                isMediaPaused = false
+                transport.setPlaybackPaused(false)
+                isMuted = false
+                transport.mute(false)
+            } else {
+                isMuted = !isMuted
+                transport.mute(isMuted)
+            }
+            publishLiveSessionSnapshot()
+        }
+    }
+
+    fun toggleMediaPause() {
+        if (state == "active" && voiceSession) {
+            val paused = !isMediaPaused
+            isMediaPaused = paused
+            isMuted = paused
+            transport.mute(paused)
+            transport.setPlaybackPaused(paused)
             publishLiveSessionSnapshot()
         }
     }
@@ -1809,7 +1842,7 @@ $transcriptSummary
 
     private fun newSession(voice: Boolean, id: String = UUID.randomUUID().toString()) {
         generation++; resetJob?.cancel(); assessmentJob?.cancel(); actionJob?.cancel(); clearLookup(); working = false; meanings.reset()
-        dismissError(); notice = null; isMuted = false
+        dismissError(); notice = null; isMuted = false; isMediaPaused = false
         voiceSession = voice
         val record = SessionRecord(id = id, languageID = language.id, themeID = selectedTheme?.id, title = selectedTheme?.title ?: language.defaultTitle)
         topicResult?.takeIf { it.languageID == language.id && selectedTheme?.id == "current" }?.let { record.topics += it }
@@ -1984,7 +2017,7 @@ $transcriptSummary
         connectionJob?.cancel(); durationJob?.cancel(); closeJob?.cancel(); assessmentJob?.cancel()
         actionJob?.cancel(); clearLookup(); languageCheckJob?.cancel()
         delegations.values.toList().forEach { it.cancel() }; delegations.clear()
-        transport.disconnect(); inputLevel = 0.0; outputLevel = 0.0; working = false; isMuted = false
+        transport.disconnect(); inputLevel = 0.0; outputLevel = 0.0; working = false; isMuted = false; isMediaPaused = false
         stopBackgroundVoiceService()
         updateSession { it.endedAt = nowSeconds(); it.usageFinal = final }
         state = "ended"

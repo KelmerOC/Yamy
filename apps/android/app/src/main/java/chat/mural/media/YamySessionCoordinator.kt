@@ -18,6 +18,7 @@ data class YamyLiveSessionSnapshot(
     val startedAtMs: Long = 0L,
     val totalDurationMs: Long = 0L,
     val mediaOutputEnabled: Boolean = true,
+    val isPaused: Boolean = false,
 )
 
 /**
@@ -30,6 +31,7 @@ object YamySessionCoordinator {
 
     interface ActionHandler {
         fun onToggleMute()
+        fun onTogglePause() = onToggleMute()
         fun onVolumeDelta(delta: Float)
         fun onHelp()
         fun onEndCall()
@@ -77,6 +79,11 @@ object YamySessionCoordinator {
     fun dispatchToggleMute() {
         val handler = actionHandler ?: return
         runOnMain { handler.onToggleMute() }
+    }
+
+    fun dispatchTogglePause() {
+        val handler = actionHandler ?: return
+        runOnMain { handler.onTogglePause() }
     }
 
     fun dispatchVolumeDelta(delta: Float) {

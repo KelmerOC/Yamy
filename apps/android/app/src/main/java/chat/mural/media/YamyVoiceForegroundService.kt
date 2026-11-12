@@ -41,10 +41,8 @@ class YamyVoiceForegroundService : Service() {
             promoteToForeground(YamySessionCoordinator.currentSnapshot)
         }
         when (intent?.action) {
-            ACTION_HELP -> YamySessionCoordinator.dispatchHelp()
-            ACTION_VOL_DOWN -> YamySessionCoordinator.dispatchVolumeDelta(-YamySessionCoordinator.VOLUME_STEP)
+            ACTION_TOGGLE_PAUSE -> YamySessionCoordinator.dispatchTogglePause()
             ACTION_TOGGLE_MUTE -> YamySessionCoordinator.dispatchToggleMute()
-            ACTION_VOL_UP -> YamySessionCoordinator.dispatchVolumeDelta(YamySessionCoordinator.VOLUME_STEP)
             ACTION_END_CALL -> {
                 YamySessionCoordinator.dispatchEnd()
                 if (!YamySessionCoordinator.currentSnapshot.isRunning) {
@@ -166,10 +164,8 @@ class YamyVoiceForegroundService : Service() {
 
         const val ACTION_START = "chat.mural.media.ACTION_START"
         const val ACTION_STOP = "chat.mural.media.ACTION_STOP"
-        const val ACTION_HELP = "chat.mural.media.ACTION_HELP"
-        const val ACTION_VOL_DOWN = "chat.mural.media.ACTION_VOL_DOWN"
+        const val ACTION_TOGGLE_PAUSE = "chat.mural.media.ACTION_TOGGLE_PAUSE"
         const val ACTION_TOGGLE_MUTE = "chat.mural.media.ACTION_TOGGLE_MUTE"
-        const val ACTION_VOL_UP = "chat.mural.media.ACTION_VOL_UP"
         const val ACTION_END_CALL = "chat.mural.media.ACTION_END_CALL"
 
         @Volatile

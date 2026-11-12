@@ -512,5 +512,12 @@
     <string name="settings_app_volume_summary">Independent volume level for Yamy\'s voice (%1$d%%).</string>
     <string name="settings_notif_permission_button">Allow live controls notification</string>
     <string name="notice_media_output_next_session">Audio output mode will apply on your next voice session.</string>
+    <string name="notif_status_paused">Paused</string>
+    <string name="notif_action_pause">Pause</string>
+    <string name="notif_action_resume">Resume</string>
+    <string name="talk_duration_chip_format">%1$d min</string>
+    <string name="talk_duration_selector_desc">Call duration: %1$d minutes</string>
+    <string name="talk_duration_option_format">%1$d min</string>
+    <string name="guardrail_skip_and_end_all">Skip and end all</string>
 </resources>
 

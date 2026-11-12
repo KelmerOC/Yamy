@@ -233,6 +233,16 @@ class LiveTransport(
         applyWebRtcVolume(attempt)
     }
 
+    fun setPlaybackPaused(paused: Boolean) {
+        geminiTransport.setPlaybackPaused(paused)
+        val attempt = activeAttempt ?: return
+        attempt.userPaused.set(paused)
+        try {
+            attempt.remoteAudioTrack?.setEnabled(!paused && !attempt.focusPaused.get())
+        } catch (_: Exception) { }
+        applyWebRtcVolume(attempt)
+    }
+
     private fun applyWebRtcVolume(attempt: Attempt) {
         val track = attempt.remoteAudioTrack ?: return
         val gain = (VoiceSettingsStore.perceptualGain(attempt.appVolume) * attempt.duckMultiplier)
@@ -734,6 +744,7 @@ class LiveTransport(
         @Volatile var appVolume: Float = initialAppVolume.coerceIn(0f, 1f)
         @Volatile var duckMultiplier: Float = 1.0f
         val focusPaused = AtomicBoolean(false)
+        val userPaused = AtomicBoolean(false)
         var remoteAudioTrack: org.webrtc.AudioTrack? = null
         var networkRecovery: VoiceConnectionRecovery? = null
         var deviceCallback: AudioDeviceCallback? = null

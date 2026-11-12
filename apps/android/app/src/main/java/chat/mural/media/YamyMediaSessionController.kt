@@ -27,23 +27,18 @@ class YamyMediaSessionController(
         setCallback(
             object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
-                    if (YamySessionCoordinator.currentSnapshot.isMuted) {
+                    val snapshot = YamySessionCoordinator.currentSnapshot
+                    if (snapshot.isPaused) {
+                        YamySessionCoordinator.dispatchTogglePause()
+                    } else if (snapshot.isMuted) {
                         YamySessionCoordinator.dispatchToggleMute()
                     }
                 }
 
                 override fun onPause() {
-                    if (!YamySessionCoordinator.currentSnapshot.isMuted) {
-                        YamySessionCoordinator.dispatchToggleMute()
+                    if (!YamySessionCoordinator.currentSnapshot.isPaused) {
+                        YamySessionCoordinator.dispatchTogglePause()
                     }
-                }
-
-                override fun onSkipToPrevious() {
-                    YamySessionCoordinator.dispatchVolumeDelta(-YamySessionCoordinator.VOLUME_STEP)
-                }
-
-                override fun onSkipToNext() {
-                    YamySessionCoordinator.dispatchVolumeDelta(YamySessionCoordinator.VOLUME_STEP)
                 }
 
                 override fun onStop() {
@@ -52,7 +47,6 @@ class YamyMediaSessionController(
 
                 override fun onCustomAction(action: String?, extras: Bundle?) {
                     when (action) {
-                        CUSTOM_ACTION_HELP -> YamySessionCoordinator.dispatchHelp()
                         CUSTOM_ACTION_END -> YamySessionCoordinator.dispatchEnd()
                     }
                 }
@@ -69,6 +63,7 @@ class YamyMediaSessionController(
         val statusLabel = when {
             snapshot.subtitleStatus.isNotBlank() -> snapshot.subtitleStatus
             snapshot.isConnecting -> appContext.getString(R.string.notif_status_connecting)
+            snapshot.isPaused -> appContext.getString(R.string.notif_status_paused)
             snapshot.isMuted -> appContext.getString(R.string.notif_status_muted)
             else -> appContext.getString(R.string.notif_status_listening)
         }
@@ -94,23 +89,13 @@ class YamyMediaSessionController(
 
         val playbackStateCode = when {
             snapshot.isConnecting -> PlaybackStateCompat.STATE_BUFFERING
-            snapshot.isMuted -> PlaybackStateCompat.STATE_PAUSED
+            snapshot.isPaused -> PlaybackStateCompat.STATE_PAUSED
             snapshot.isRunning -> PlaybackStateCompat.STATE_PLAYING
             else -> PlaybackStateCompat.STATE_STOPPED
         }
-        val playbackSpeed = if (snapshot.isRunning && !snapshot.isConnecting && !snapshot.isMuted) 1f else 0f
-        val supportedActions = PlaybackStateCompat.ACTION_PLAY_PAUSE or
-            PlaybackStateCompat.ACTION_PLAY or
-            PlaybackStateCompat.ACTION_PAUSE or
-            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-            PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-            PlaybackStateCompat.ACTION_STOP
+        val playbackSpeed = if (snapshot.isRunning && !snapshot.isConnecting && !snapshot.isPaused) 1f else 0f
+        val supportedActions = supportedPlaybackActions()
 
-        val helpCustomAction = PlaybackStateCompat.CustomAction.Builder(
-            CUSTOM_ACTION_HELP,
-            appContext.getString(R.string.notif_action_help),
-            R.drawable.ic_notif_help,
-        ).build()
         val endCustomAction = PlaybackStateCompat.CustomAction.Builder(
             CUSTOM_ACTION_END,
             appContext.getString(R.string.notif_action_end),
@@ -120,7 +105,6 @@ class YamyMediaSessionController(
         val playbackState = PlaybackStateCompat.Builder()
             .setActions(supportedActions)
             .setState(playbackStateCode, positionMs, playbackSpeed)
-            .addCustomAction(helpCustomAction)
             .addCustomAction(endCustomAction)
             .build()
         mediaSession.setPlaybackState(playbackState)
@@ -134,9 +118,9 @@ class YamyMediaSessionController(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val muteIcon = if (snapshot.isMuted) R.drawable.ic_notif_mic_off else R.drawable.ic_notif_mic_on
-        val muteTitle = appContext.getString(
-            if (snapshot.isMuted) R.string.notif_action_unmute else R.string.notif_action_mute,
+        val pauseIcon = if (snapshot.isPaused) R.drawable.ic_notif_play else R.drawable.ic_notif_pause
+        val pauseTitle = appContext.getString(
+            if (snapshot.isPaused) R.string.notif_action_resume else R.string.notif_action_pause,
         )
 
         return NotificationCompat.Builder(appContext, channelId)
@@ -156,30 +140,9 @@ class YamyMediaSessionController(
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(
                 NotificationCompat.Action.Builder(
-                    R.drawable.ic_notif_help,
-                    appContext.getString(R.string.notif_action_help),
-                    serviceActionPendingIntent(YamyVoiceForegroundService.ACTION_HELP, REQUEST_CODE_HELP),
-                ).build(),
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                    R.drawable.ic_notif_vol_down,
-                    appContext.getString(R.string.notif_action_vol_down),
-                    serviceActionPendingIntent(YamyVoiceForegroundService.ACTION_VOL_DOWN, REQUEST_CODE_VOL_DOWN),
-                ).build(),
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                    muteIcon,
-                    muteTitle,
-                    serviceActionPendingIntent(YamyVoiceForegroundService.ACTION_TOGGLE_MUTE, REQUEST_CODE_MUTE),
-                ).build(),
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                    R.drawable.ic_notif_vol_up,
-                    appContext.getString(R.string.notif_action_vol_up),
-                    serviceActionPendingIntent(YamyVoiceForegroundService.ACTION_VOL_UP, REQUEST_CODE_VOL_UP),
+                    pauseIcon,
+                    pauseTitle,
+                    serviceActionPendingIntent(YamyVoiceForegroundService.ACTION_TOGGLE_PAUSE, REQUEST_CODE_PAUSE),
                 ).build(),
             )
             .addAction(
@@ -192,7 +155,7 @@ class YamyMediaSessionController(
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession.sessionToken)
-                    .setShowActionsInCompactView(1, 2, 3),
+                    .setShowActionsInCompactView(0, 1),
             )
             .build()
     }
@@ -218,14 +181,17 @@ class YamyMediaSessionController(
 
     companion object {
         private const val MEDIA_SESSION_TAG = "YamyVoiceSession"
-        const val CUSTOM_ACTION_HELP = "chat.mural.media.CUSTOM_ACTION_HELP"
         const val CUSTOM_ACTION_END = "chat.mural.media.CUSTOM_ACTION_END"
+        const val MAX_NOTIFICATION_ACTIONS = 2
+
+        internal fun supportedPlaybackActions(): Long =
+            PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                PlaybackStateCompat.ACTION_PLAY or
+                PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_STOP
 
         private const val REQUEST_CODE_OPEN_APP = 100
-        private const val REQUEST_CODE_HELP = 101
-        private const val REQUEST_CODE_VOL_DOWN = 102
-        private const val REQUEST_CODE_MUTE = 103
-        private const val REQUEST_CODE_VOL_UP = 104
+        private const val REQUEST_CODE_PAUSE = 103
         private const val REQUEST_CODE_END = 105
     }
 }

@@ -307,9 +307,19 @@ class GeminiLiveTransport(
         applyPlaybackVolume(session)
     }
 
+    fun setPlaybackPaused(paused: Boolean) {
+        val session = activeSession ?: return
+        session.userPaused.set(paused)
+        applyPlaybackVolume(session)
+    }
+
     private fun applyPlaybackVolume(session: Session) {
         val track = session.audioTrack ?: return
-        val gain = (VoiceSettingsStore.perceptualGain(session.appVolume) * session.duckMultiplier).coerceIn(0f, 1f)
+        val gain = if (session.userPaused.get() || session.focusPaused.get()) {
+            0f
+        } else {
+            (VoiceSettingsStore.perceptualGain(session.appVolume) * session.duckMultiplier).coerceIn(0f, 1f)
+        }
         try {
             track.setVolume(gain)
         } catch (_: Exception) { }
@@ -1166,6 +1176,7 @@ class GeminiLiveTransport(
         @Volatile var appVolume: Float = initialAppVolume.coerceIn(0f, 1f)
         @Volatile var duckMultiplier: Float = 1.0f
         val focusPaused = AtomicBoolean(false)
+        val userPaused = AtomicBoolean(false)
         val setupComplete = CompletableDeferred<Unit>()
         val closing = AtomicBoolean(false)
         val isAwaitingInitialGreeting = AtomicBoolean(false)
