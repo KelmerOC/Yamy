@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -88,11 +89,29 @@ class MainActivity : ComponentActivity() {
             var microphoneMessage by rememberSaveable { mutableStateOf<String?>(null) }
             var microphonePermanentlyDenied by rememberSaveable { mutableStateOf(false) }
             var requestedMicrophone by rememberSaveable { mutableStateOf(false) }
+            var requestedNotificationPermission by rememberSaveable { mutableStateOf(false) }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    vm.refreshLiveSessionNotification()
+                }
+            }
+            fun startVoiceCall() {
+                vm.start()
+                if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    vm.backgroundVoiceEnabled &&
+                    !requestedNotificationPermission &&
+                    ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestedNotificationPermission = true
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
             val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                 if (granted) {
                     microphoneMessage = null
                     microphonePermanentlyDenied = false
-                    vm.start()
+                    startVoiceCall()
                 } else {
                     val canAskAgain = shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
                     microphonePermanentlyDenied = requestedMicrophone && !canAskAgain
@@ -141,7 +160,7 @@ class MainActivity : ComponentActivity() {
                 onRequestMicrophone = {
                     if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         microphoneMessage = null
-                        vm.start()
+                        startVoiceCall()
                     } else {
                         requestedMicrophone = true
                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -219,7 +238,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        if (!isChangingConfigurations) vm.background()
+        if (!isChangingConfigurations && !vm.shouldStayAliveInBackground()) vm.background()
         super.onStop()
     }
 

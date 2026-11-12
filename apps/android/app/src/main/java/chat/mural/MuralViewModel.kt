@@ -1,15 +1,21 @@
 package chat.mural
 
 import android.app.Application
+import android.content.Intent
 import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import chat.mural.core.*
+import chat.mural.media.YamyLiveSessionSnapshot
+import chat.mural.media.YamySessionCoordinator
+import chat.mural.media.YamyVoiceForegroundService
 import chat.mural.network.*
 import java.util.UUID
+import kotlin.math.round
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.Serializable
@@ -183,6 +189,12 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     var voiceTimbre by mutableStateOf(voiceSettingsStore.voiceTimbre); private set
     var appLanguage by mutableStateOf(voiceSettingsStore.appLanguage); private set
     var darkTheme by mutableStateOf(voiceSettingsStore.darkTheme); private set
+    private var _backgroundVoiceEnabled by mutableStateOf(voiceSettingsStore.backgroundVoiceEnabled)
+    val backgroundVoiceEnabled: Boolean get() = _backgroundVoiceEnabled
+    private var _mediaOutputEnabled by mutableStateOf(voiceSettingsStore.mediaOutputEnabled)
+    val mediaOutputEnabled: Boolean get() = _mediaOutputEnabled
+    private var _appVolume by mutableStateOf(voiceSettingsStore.appVolume)
+    val appVolume: Float get() = _appVolume
     var hasSeenApiKeyGuide by mutableStateOf(voiceSettingsStore.hasSeenApiKeyGuide); private set
     fun markApiKeyGuideSeen() {
         voiceSettingsStore.hasSeenApiKeyGuide = true
@@ -239,6 +251,112 @@ class MuralViewModel(application: Application) : AndroidViewModel(application) {
     fun updateDarkTheme(enabled: Boolean) {
         voiceSettingsStore.darkTheme = enabled
         darkTheme = enabled
+    }
+
+    fun shouldStayAliveInBackground(): Boolean = backgroundVoiceEnabled && isRunning && voiceSession
+
+    fun setBackgroundVoiceEnabled(enabled: Boolean) {
+        voiceSettingsStore.backgroundVoiceEnabled = enabled
+        _backgroundVoiceEnabled = enabled
+        if (isRunning && voiceSession) {
+            if (enabled) {
+                startBackgroundVoiceService()
+            } else {
+                stopBackgroundVoiceService()
+            }
+        }
+    }
+
+    fun setMediaOutputEnabled(enabled: Boolean) {
+        voiceSettingsStore.mediaOutputEnabled = enabled
+        _mediaOutputEnabled = enabled
+        if (isRunning && voiceSession) {
+            notice = getApplication<Application>().getString(R.string.notice_media_output_next_session)
+        }
+    }
+
+    fun setAppVolume(volume: Float) {
+        val clamped = if (volume.isNaN()) VoiceSettingsStore.DEFAULT_APP_VOLUME else volume.coerceIn(0f, 1f)
+        voiceSettingsStore.appVolume = clamped
+        _appVolume = clamped
+        transport.setAppVolume(clamped)
+        if (isRunning && voiceSession) {
+            publishLiveSessionSnapshot()
+        }
+    }
+
+    fun adjustAppVolume(delta: Float) {
+        val raw = (appVolume + delta).coerceIn(0f, 1f)
+        val rounded = (round(raw * 20f) / 20f).coerceIn(0f, 1f)
+        setAppVolume(rounded)
+    }
+
+    fun refreshLiveSessionNotification() {
+        if (shouldStayAliveInBackground()) {
+            publishLiveSessionSnapshot()
+            YamySessionCoordinator.requestNotificationRefresh()
+        }
+    }
+
+    private val mediaActionHandler = object : YamySessionCoordinator.ActionHandler {
+        override fun onToggleMute() = toggleMute()
+        override fun onVolumeDelta(delta: Float) = adjustAppVolume(delta)
+        override fun onHelp() = help()
+        override fun onEndCall() = end("Ended from media controls")
+    }
+
+    private fun publishLiveSessionSnapshot() {
+        if (!backgroundVoiceEnabled || !isRunning || !voiceSession) return
+        val app = getApplication<Application>()
+        val currentSession = session
+        val title = selectedTheme?.title?.takeIf { it.isNotBlank() }
+            ?: currentSession?.title?.takeIf { it.isNotBlank() }
+            ?: language.defaultTitle.takeIf { it.isNotBlank() }
+            ?: app.getString(R.string.notif_default_title)
+        val statusLabel = when {
+            state == "connecting" -> app.getString(R.string.notif_status_connecting)
+            isMuted -> app.getString(R.string.notif_status_muted)
+            else -> app.getString(R.string.notif_status_listening)
+        }
+        val albumLabel = app.getString(R.string.notif_album_format, language.name, currentMcerLevel)
+        val elapsedMs = currentSession?.let { ((nowSeconds() - it.startedAt) * 1000.0).toLong().coerceAtLeast(0L) } ?: 0L
+        val startedAtMs = System.currentTimeMillis() - elapsedMs
+        val totalDurationMs = archive.preferences.sessionMinutes * 60_000L
+        YamySessionCoordinator.publish(
+            YamyLiveSessionSnapshot(
+                title = title,
+                subtitleStatus = statusLabel,
+                albumLabel = albumLabel,
+                isRunning = isRunning,
+                isConnecting = state == "connecting",
+                isMuted = isMuted,
+                appVolume = appVolume,
+                startedAtMs = startedAtMs,
+                totalDurationMs = totalDurationMs,
+                mediaOutputEnabled = mediaOutputEnabled,
+            )
+        )
+    }
+
+    private fun startBackgroundVoiceService() {
+        YamySessionCoordinator.registerHandler(mediaActionHandler)
+        publishLiveSessionSnapshot()
+        runCatching {
+            val app = getApplication<Application>()
+            val intent = Intent(app, YamyVoiceForegroundService::class.java).apply {
+                action = YamyVoiceForegroundService.ACTION_START
+            }
+            ContextCompat.startForegroundService(app, intent)
+        }
+    }
+
+    private fun stopBackgroundVoiceService() {
+        YamySessionCoordinator.unregisterHandler(mediaActionHandler)
+        YamySessionCoordinator.clear()
+        runCatching {
+            val app = getApplication<Application>()
+            app.stopService(Intent(app, YamyVoiceForegroundService::class.java))
+        }
     }
 
     fun toggleFavoriteTheme(themeID: String): Boolean {
@@ -1649,6 +1767,7 @@ $transcriptSummary
         if (state == "active") {
             updateSession { it.themeID = theme?.id; it.title = theme?.title ?: language.defaultTitle }
             command("instructions", TeachingPolicy.theme(theme, language))
+            if (voiceSession) publishLiveSessionSnapshot()
         }
     }
     fun toggleMeaning() {
@@ -1656,7 +1775,13 @@ $transcriptSummary
         meanings.reset()
         if (archive.preferences.meaningVisible) scheduleTranslation()
     }
-    fun toggleMute() { if (state == "active" && voiceSession) { isMuted = !isMuted; transport.mute(isMuted) } }
+    fun toggleMute() {
+        if (state == "active" && voiceSession) {
+            isMuted = !isMuted
+            transport.mute(isMuted)
+            publishLiveSessionSnapshot()
+        }
+    }
     fun help() {
         if (state != "active") return
         if (voiceSession) { activity.learnerEngaged(activityNow()); inactivitySeconds = null; conversationPace.askForHelp(session?.passages?.lastOrNull { it.speaker == Speaker.user }); command("instructions", conversationPace.instruction); command("instructions", TeachingPolicy.help(language)); notice = getApplication<Application>().getString(R.string.notice_help_simpler) }
@@ -1770,6 +1895,9 @@ $transcriptSummary
             return
         }
         newSession(true); state = "connecting"
+        if (backgroundVoiceEnabled) {
+            startBackgroundVoiceService()
+        }
         val id = session!!.id
         val module = language
         val activeThemeId = selectedTheme?.id ?: "general"
@@ -1813,7 +1941,15 @@ $transcriptSummary
                         }
                     }
                 }
-                transport.connect(provider, instructions, history, module.locale, voiceName = voiceTimbre)
+                transport.connect(
+                    provider,
+                    instructions,
+                    history,
+                    module.locale,
+                    voiceName = voiceTimbre,
+                    useMediaOutput = mediaOutputEnabled,
+                    initialAppVolume = appVolume,
+                )
             } catch (cancelled: CancellationException) {
                 if (cancelled is TimeoutCancellationException) {
                     if (session?.id == id && isRunning) fail(cancelled, R.string.error_voice_connect_failed)
@@ -1834,6 +1970,7 @@ $transcriptSummary
         delegations.values.toList().forEach { it.cancel() }; delegations.clear(); working = false
         updateSession { it.endReason = reason }
         if (!voiceSession || connecting) { finish(false); return }
+        publishLiveSessionSnapshot()
         transport.close()
         closeJob = viewModelScope.launch { delay(5000); if (state == "closing") finish(false) }
     }
@@ -1848,6 +1985,7 @@ $transcriptSummary
         actionJob?.cancel(); clearLookup(); languageCheckJob?.cancel()
         delegations.values.toList().forEach { it.cancel() }; delegations.clear()
         transport.disconnect(); inputLevel = 0.0; outputLevel = 0.0; working = false; isMuted = false
+        stopBackgroundVoiceService()
         updateSession { it.endedAt = nowSeconds(); it.usageFinal = final }
         state = "ended"
         notice = when (session?.endReason) {
@@ -1894,6 +2032,7 @@ $transcriptSummary
             "session.started" -> if (state == "connecting") {
                 state = "active"; activity = ConversationActivity(activityNow()); conversationPace = ConversationPace(); inactivitySeconds = null
                 updateSession { it.providerID = (event["session"] as? JsonObject)?.get("id")?.jsonPrimitive?.content ?: it.providerID }
+                publishLiveSessionSnapshot()
                 command("instructions", TeachingPolicy.greeting(language)); startDurationChecks()
             }
             "session.input_transcript.delta", "session.output_transcript.delta" -> {
@@ -2245,5 +2384,12 @@ $transcriptSummary
         return try { archive = ArchiveCodec.merge(archive, prepareImportedArchive(data)); persist(); notice = getApplication<Application>().getString(R.string.notice_backup_imported); true }
         catch (_: Exception) { presentError(getApplication<Application>().getString(R.string.error_import_failed)); false }
     }
-    override fun onCleared() { hostedBindings.disableHelpers(); transport.disconnect(); super.onCleared() }
+    override fun onCleared() {
+        hostedBindings.disableHelpers()
+        if (!shouldStayAliveInBackground() || !YamyVoiceForegroundService.isRunning) {
+            transport.disconnect()
+            stopBackgroundVoiceService()
+        }
+        super.onCleared()
+    }
 }
